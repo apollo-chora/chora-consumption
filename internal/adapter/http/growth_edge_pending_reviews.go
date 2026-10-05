@@ -17,6 +17,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/apollo-chora/chora-common/tracing"
+
 	wu "github.com/apollo-chora/chora-consumption/internal/domain/weakness_upload"
 )
 
@@ -64,7 +66,11 @@ func (s *ExtServer) handleMePendingReviews(w http.ResponseWriter, r *http.Reques
 		extWriteError(w, http.StatusBadRequest, "MISSING_CONTEXT", err.Error())
 		return
 	}
-	_ = tenantID // the tenant rides the ctx into RLS; named here for symmetry with the sibling handlers
+	// The tenant must ride the CONTEXT into RLS, not just be read off the
+	// header: rls.ApplySession reads tracing.TenantIDFromContext, so a bare
+	// r.Context() fails with "tenant_id missing on context". Mirrors the
+	// sibling growth_edges_handler.
+	ctx := tracing.WithGCID(tracing.WithTenantID(r.Context(), tenantID), gcid)
 
 	if s.WeaknessPendingReviews == nil {
 		extWriteError(w, http.StatusServiceUnavailable, "PENDING_REVIEWS_UNAVAILABLE",
@@ -85,7 +91,7 @@ func (s *ExtServer) handleMePendingReviews(w http.ResponseWriter, r *http.Reques
 	// The learner is the VERIFIED gcid header, never a query parameter. A
 	// caller-supplied learner id here would let one learner read another's
 	// parked diagnoses by guessing an id.
-	uploads, err := s.WeaknessPendingReviews.ListAwaitingReview(r.Context(), gcid, limit)
+	uploads, err := s.WeaknessPendingReviews.ListAwaitingReview(ctx, gcid, limit)
 	if err != nil {
 		extWriteError(w, http.StatusInternalServerError, "PENDING_REVIEWS_FAILED", err.Error())
 		return

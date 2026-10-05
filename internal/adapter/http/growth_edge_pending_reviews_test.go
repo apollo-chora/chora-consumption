@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/apollo-chora/chora-common/tracing"
 	httpadapter "github.com/apollo-chora/chora-consumption/internal/adapter/http"
 	wu "github.com/apollo-chora/chora-consumption/internal/domain/weakness_upload"
 )
@@ -19,11 +20,13 @@ type fakePendingLister struct {
 	err        error
 	gotLearner string
 	gotLimit   int
+	gotCtx     context.Context
 	callCount  int
 }
 
-func (f *fakePendingLister) ListAwaitingReview(_ context.Context, learnerGCID string, limit int) ([]wu.Upload, error) {
+func (f *fakePendingLister) ListAwaitingReview(ctx context.Context, learnerGCID string, limit int) ([]wu.Upload, error) {
 	f.callCount++
+	f.gotCtx = ctx
 	f.gotLearner, f.gotLimit = learnerGCID, limit
 	return f.out, f.err
 }
@@ -200,6 +203,29 @@ func TestPendingReviews_GarbageLimitFallsBackToTheDefault(t *testing.T) {
 	}
 	if l.gotLimit != 0 {
 		t.Errorf("limit = %d, want 0 so the repository applies its default", l.gotLimit)
+	}
+}
+
+// TestPendingReviews_CarriesTheRLSContextToTheLister — rls.ApplySession reads
+// the tenant off the CONTEXT, not the header. A handler that reads the header
+// but hands a bare r.Context() to the read model fails at query time with
+// "tenant_id missing on context", which the home card renders as upstream_5xx.
+func TestPendingReviews_CarriesTheRLSContextToTheLister(t *testing.T) {
+	l := &fakePendingLister{out: []wu.Upload{}}
+	w := httptest.NewRecorder()
+	pendingServer(l).Routes().ServeHTTP(w, pendingReq("/v1/me/growth-edges/uploads?status=awaiting_review", true))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body %s", w.Code, w.Body.String())
+	}
+	if l.gotCtx == nil {
+		t.Fatal("the read model was never called")
+	}
+	if got := tracing.TenantIDFromContext(l.gotCtx); got != "11111111-1111-7111-8111-111111111111" {
+		t.Errorf("tenant on ctx = %q; want the X-Tenant-Id header (handler must wrap with tracing.WithTenantID)", got)
+	}
+	if got := tracing.GCIDFromContext(l.gotCtx); got != "22222222-2222-7222-8222-222222222222" {
+		t.Errorf("gcid on ctx = %q; want the gcid header (handler must wrap with tracing.WithGCID)", got)
 	}
 }
 
