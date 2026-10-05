@@ -1,0 +1,79 @@
+-- =============================================================================
+-- chora-consumption : 0088_familiar_seeker_web_research_activation.up.sql
+--
+-- Domain   : Content Consumption (5 core)
+-- Database : chora_consumption
+-- Context  : Familiar Growth & Grimoire — P5 "Far Sight" (CHO-2017, ADR-220):
+--            the SECOND Seeker Skill RELEASE, web_research ("Far Sight", st5 ·
+--            2 slots · external_egress · sink=memory_note · price 80).
+--            web_research researches a DIRECTION the learner points at against
+--            grounded, CITED web sources reached ONLY through
+--            chora-model-gateway's grounded-search surface — the single web
+--            egress where Cloud Model Armor screens and mana meters
+--            (ADR-163/177/152) — and writes a durable, CITED research note into
+--            the familiar's memory. Its runner builder has landed
+--            (buildWebResearchTurn: screen + resolve the direction (a concept_ref
+--            UUID resolves to the concept TITLE — never leak the raw UUID to the
+--            egress) → depth-scaled grounded search via the GroundedSearchPort
+--            seam → CITATION MANDATE (zero citations ⇒ honest hedge, NO note) →
+--            ONE fenced research turn scoped to the cited sources → memory_note
+--            (memory_type='research') + structured citations).
+--
+--            ⚠ OWNER RULING (2026-07-10): web_research has EXACTLY ONE output
+--            sink = memory_note. The spec §2.4 sheet listed a SECOND sink (map
+--            suggestion inbox via the kg.suggest candidate feed, provenance
+--            familiar_suggested); that two-sink listing was a doc error. The
+--            single memory_note sink is what the 0061 seed + seedspec carry; the
+--            map-suggestion candidate feed is DEFERRED (never wired as a second
+--            sink — a closed-sink invariant per ADR-218 D9). This activation does
+--            NOT touch the sink; it only flips active=TRUE.
+--
+--            HOLD RELEASED — APPLIED 2026-07-11 05:38 UTC. web_research is ACTIVE
+--            in production.
+--
+--            This migration was authored under an ADR-174 §8 eval HOLD: it
+--            must not be applied until web_research's ADR-174 §8 external_egress
+--            eval gate had PASSED,
+--            because flipping active=TRUE before the gate would release an
+--            un-evaluated external-egress LLM Skill — exactly what §8 forbids
+--            (the same gating that held the sight skills dark until 0073, the
+--            answerable skills until 0082, fog_scout until 0085, and fact_check
+--            until 0087).
+--
+--            THE GATE RAN AND PASSED (2026-07-11, both Seekers): facts_
+--            groundedness 1.0 · safety 1.0 · injection block_rate 1.0 ·
+--            instruction-following 5.0/4.67. A live web_research invoke then
+--            returned real Vertex `google_search` citations, and CHO-2148 put the
+--            H+ opt-in + O+ kill-switch governance in front of the egress.
+--
+--            ⚠ The hold banner that used to sit here outlived the hold and
+--            was read as live truth. A hold marker is a claim about the DATABASE;
+--            when the hold lifts, the marker must die with it. Deployed reality
+--            outranks this comment — check `familiar_skill_catalog.active` +
+--            chora_runner_schema_migrations, never a header.
+--
+--            ⚠ ALSO GATED (separately, before any real-tenant exposure): the
+--            external_egress TENANT policy gate (ADR-220 D4 — franchise
+--            default-OFF) + the O+ per-capability kill switch + the real
+--            GroundedSearchPort gateway adapter. These are P5 checkpoint items
+--            beyond this activation vehicle; even active, the two-gate access
+--            (tenant class allow ∩ learner st5 + equipped) keeps it invisible
+--            until a tenant opts in.
+--
+--            Deliberately EXACTLY seedspec.P5SeekerActivationWebResearch
+--            (web_research). No other catalogue key may ride the UPDATE — the
+--            drift test TestMigration0088_ActivatesExactlyP5SeekerWebResearch
+--            binds the list (in particular the fact_check + source_reader
+--            siblings must stay on their own waves).
+--
+-- Activation is DATA, not schema (spec §5 P1-delta #4): a standalone UPDATE, the
+-- dark seed (0061) untouched.
+--
+-- Idempotent: re-running is a no-op on an already-active row. Reversible via the
+-- .down.sql (flips it back dark → equip/invoke 409s SKILL_NOT_ACTIVE).
+-- =============================================================================
+
+UPDATE familiar_skill_catalog
+   SET active = TRUE
+ WHERE skill_key IN ('web_research')
+   AND deleted_at IS NULL;

@@ -1,0 +1,76 @@
+-- =============================================================================
+-- chora-consumption : 0107_familiar_species_drop_random_default.up.sql
+--
+-- Domain        : Content Consumption (5 core)
+-- Database      : chora_consumption
+-- Author        : ADR-248 D6: species no-repeat until the roster wraps
+-- Date          : 2026-08-07
+--
+-- Purpose:
+--   Drop the migration-0046 random-hero column DEFAULT on
+--   familiar_instances.species. It has no remaining user in service code and it
+--   is the mechanism behind two separate defects.
+--
+-- -----------------------------------------------------------------------------
+-- WHY THE DEFAULT MUST GO
+-- -----------------------------------------------------------------------------
+-- 0046 §2 set:
+--     ALTER COLUMN species SET DEFAULT
+--       (ARRAY['dragon','phoenix','owl','fox','penguin'])[1 + floor(random()*5)::int]
+--
+-- so a row inserted WITHOUT naming the column silently acquires a species that
+-- nobody rolled and the learner was never shown. That decoy has now caused the
+-- same class of bug twice:
+--
+--   1. CHO-2227: a purchased pod is a MYSTERY artifact and must have no species
+--      until it opens, but provisionEggInsertSQL omitted the column, so every
+--      pod carried a hidden breed. Fixed by naming the column NULL.
+--   2. ADR-248: under the no-repeat ruling the owned-species set is subtracted
+--      from a learner's odds. insertFamiliarInstanceSQL omitted the column, so
+--      a decoy on one familiar EXCLUDED that breed from the learner's next
+--      ceremony and 409'd an explicit pick of it. The NULLIF(species,'') guard
+--      does not catch this: the DEFAULT writes a real non-blank value.
+--
+-- The DEFAULT's original justification is void. 0046 §2 existed so legacy-path
+-- familiars rendered "a real creature" instead of NULL, because the FE then
+-- rendered a NULL species as the dragon. The FE fixed that separately (bug #15):
+-- breed-art.component.ts `isPrehatch` renders a species-less row as the
+-- breed-neutral Pod, never the Dragon. The DEFAULT now buys nothing and only
+-- manufactures decoys.
+--
+-- Dropping it converts a silent WRONG species into an honest NULL, which every
+-- reader already handles: the column is nullable by design (0032: "NULL while in
+-- Stage 0 (Egg)"), scanGrowthRow coerces NULL to "", ownerSpeciesSetSQL filters
+-- it out, and the FE renders the Pod.
+--
+-- -----------------------------------------------------------------------------
+-- PRECONDITION (verified 2026-08-07 against origin/main)
+-- -----------------------------------------------------------------------------
+-- Every INSERT into familiar_instances in SERVICE CODE names the column:
+--   - repo/pg/growth.go           provisionEggInsertSQL       -> explicit NULL
+--   - repo/pg/familiar_instance.go insertFamiliarInstanceSQL  -> explicit NULL
+-- and both seeding migrations (0036, 0038) name it explicitly.
+--
+-- ONE known remaining omission, outside chora-consumption:
+--   chora-infra/seed/phyllis/07_consumption.sql inserts the "Pythagoras" dev
+--   seed row without naming species. After this migration that row gets NULL and
+--   renders as a Pod. That is correct behaviour, not a regression, and it is a
+--   dev seed rather than a runtime path. Name the column there if a hero render
+--   is wanted.
+--
+-- -----------------------------------------------------------------------------
+-- WHAT THIS MIGRATION DOES NOT DO
+-- -----------------------------------------------------------------------------
+-- It does NOT touch the species CHECK constraint (0046 §1), does NOT backfill or
+-- alter any existing row's species, and does NOT change nullability. Existing
+-- decoy species already written by the DEFAULT are left alone: repairing them
+-- means deciding, per row, whether a learner has already SEEN that companion,
+-- which is a data question this schema change must not answer silently.
+-- =============================================================================
+
+BEGIN;
+
+ALTER TABLE familiar_instances
+  ALTER COLUMN species DROP DEFAULT;
+
+COMMIT;

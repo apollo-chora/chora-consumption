@@ -1,0 +1,64 @@
+-- =============================================================================
+-- chora-consumption : 0087_familiar_seeker_fact_check_activation.up.sql
+--
+-- Domain   : Content Consumption (5 core)
+-- Database : chora_consumption
+-- Context  : Familiar Growth & Grimoire — P5 "Far Sight" (CHO-2017, ADR-220):
+--            the FIRST Seeker Skill RELEASE, fact_check (st5 · 1 slot ·
+--            external_egress · sink=chat · price 40). fact_check verifies a
+--            learner claim against grounded, CITED web sources reached ONLY
+--            through chora-model-gateway's grounded-search surface — the single
+--            web egress where Cloud Model Armor screens and mana meters
+--            (ADR-163/177/152). Its runner builder has landed
+--            (buildFactCheckTurn: screen the claim → grounded search via the
+--            GroundedSearchPort seam → CITATION MANDATE (zero citations ⇒ honest
+--            hedge, no verdict) → ONE fenced verify turn scoped to the cited
+--            sources → chat verdict + structured citations).
+--
+--            HOLD RELEASED — APPLIED 2026-07-11 05:38 UTC. fact_check is ACTIVE
+--            in production.
+--
+--            This migration was authored under an ADR-174 §8 eval HOLD: it
+--            must not be applied until fact_check's ADR-174 §8 external_egress
+--            eval gate had PASSED,
+--            because flipping active=TRUE before the gate would release an
+--            un-evaluated external-egress LLM Skill — exactly what §8 forbids
+--            (the same gating that held the sight skills dark until 0073, the
+--            answerable skills until 0082, and fog_scout until 0085).
+--
+--            THE GATE RAN AND PASSED (2026-07-11, both Seekers): facts_
+--            groundedness 1.0 · safety 1.0 · injection block_rate 1.0 ·
+--            instruction-following 5.0/4.67. Real Vertex `google_search` grounded
+--            egress was then confirmed live end-to-end, and CHO-2148 put the
+--            H+ opt-in + O+ kill-switch governance in front of it.
+--
+--            ⚠ The hold banner that used to sit here outlived the hold and
+--            was read as live truth. A hold marker is a claim about the DATABASE;
+--            when the hold lifts, the marker must die with it. Deployed reality
+--            outranks this comment — check `familiar_skill_catalog.active` +
+--            chora_runner_schema_migrations, never a header.
+--
+--            ⚠ ALSO GATED (separately, before any real-tenant exposure): the
+--            external_egress TENANT policy gate (ADR-220 D4 — franchise
+--            default-OFF) + the O+ per-capability kill switch + the real
+--            GroundedSearchPort gateway adapter. These are P5 checkpoint items
+--            beyond this activation vehicle; even active, the two-gate access
+--            (tenant class allow ∩ learner st5 + equipped) keeps it invisible
+--            until a tenant opts in.
+--
+--            Deliberately EXACTLY seedspec.P5SeekerActivationFactCheck
+--            (fact_check). No other catalogue key may ride the UPDATE — the
+--            drift test TestMigration0087_ActivatesExactlyP5SeekerFactCheck
+--            binds the list.
+--
+-- Activation is DATA, not schema (spec §5 P1-delta #4): a standalone UPDATE, the
+-- dark seed (0061) untouched.
+--
+-- Idempotent: re-running is a no-op on an already-active row. Reversible via the
+-- .down.sql (flips it back dark → equip/invoke 409s SKILL_NOT_ACTIVE).
+-- =============================================================================
+
+UPDATE familiar_skill_catalog
+   SET active = TRUE
+ WHERE skill_key IN ('fact_check')
+   AND deleted_at IS NULL;

@@ -1,0 +1,27 @@
+-- =============================================================================
+-- chora-consumption : 0049_atom_index_course_id_nullable.up.sql
+--
+-- Domain        : Content Consumption (5 core)
+-- Database      : chora_consumption
+-- Author        : L4 KG-hexagon fog fold-in (CHO-1702 follow-on),
+--                 no-debt/fail-loud directive 2026-06-11
+-- Architecture  : internal/adapter/repo/pg/atom_index.go (Save binds SQL NULL
+--                 for the ""-CourseID standalone convention; reads COALESCE)
+--
+-- Purpose:
+--   atom_index.course_id was UUID NOT NULL — but standalone atoms (authored
+--   outside any course, e.g. direct A+ authoring) legitimately have NO owning
+--   course. The domain projection (atom_index.New) has always documented
+--   CourseID as optional; only this schema disagreed. Live consequence
+--   (2026-06-10): chora.creation.atom.created.v1 for standalone atoms carries
+--   course_id "" → the upsert failed 22P02 `invalid input syntax for type
+--   uuid: ""` → EVERY standalone atom was silently absent from atom_index,
+--   starving the KG-fog candidate catalogue (FOG_INSUFFICIENT_CATALOGUE) and
+--   the MCQ answer-key read path for those atoms.
+--
+--   ALTER COLUMN ... DROP NOT NULL is naturally idempotent (re-apply safe).
+--   NULL course_id rows are excluded from idx_atom_index_course lookups by
+--   definition (NULL never equals), which matches ListByCourse semantics.
+-- =============================================================================
+
+ALTER TABLE atom_index ALTER COLUMN course_id DROP NOT NULL;

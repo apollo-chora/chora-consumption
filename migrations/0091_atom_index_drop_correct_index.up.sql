@@ -1,0 +1,27 @@
+-- =============================================================================
+-- chora-consumption : 0091_atom_index_drop_correct_index.up.sql
+--
+-- Domain   : Content Consumption (5 core)
+-- Database : chora_consumption
+-- Context  : CHO-2142 dead-column drop. atom_index.correct_index is the
+--            POSITIONAL MCQ answer key declared in 0004. It was superseded by
+--            the stable identity-based correct_option_id in 0044 (CHO-1627)
+--            and was never populated: no writer in chora-consumption has ever
+--            named it. The atom.created upsert and the atom.published targeted
+--            UPDATE both enumerate their columns explicitly and set
+--            correct_option_id only, so the column can only ever have held
+--            NULL — and the live projection holds zero non-null values
+--            (verified pre-drop under CHO-2142).
+--
+--            Nothing reads it either: no SQL in the service names it, there is
+--            no SELECT * against atom_index, and the atom_index domain struct
+--            carries CorrectOptionID with no positional counterpart. Grading
+--            is identity-based end to end.
+--
+-- Shape    : Single idempotent DROP COLUMN — schema only, no data movement
+--            (the column is uniformly NULL). Reversible via the .down.sql,
+--            which restores the column shape; it cannot restore values because
+--            none were ever written.
+-- =============================================================================
+
+ALTER TABLE atom_index DROP COLUMN IF EXISTS correct_index;

@@ -1,0 +1,25 @@
+-- =============================================================================
+-- chora-consumption : 0096_familiar_answerable_activation_reassert.down.sql
+--
+-- DELIBERATE NO-OP. This is not an oversight; do not "complete" it.
+--
+-- 0096 is a REPAIR, not a release. Its up re-asserts the activation that 0082
+-- already decided, after the unrecorded 0075 replays out of order and darkens
+-- quiz_me + socratic_drill.
+--
+-- A symmetric down would SET active = FALSE — which does not "undo" 0096, it
+-- RESTORES THE DEFECT: two learner-facing Skills dark despite an ADR-174 §8 eval
+-- gate that PASSED (2026-07-09: quiz_me facts_groundedness 1.0, socratic_drill
+-- 0.909, safety 1.0 on both, adversarial block-rate 1.0). Rolling back a repair
+-- must never re-open the hole it closed.
+--
+-- The activation DECISION lives in 0082_familiar_answerable_activation_flip.
+-- If these two Skills should go dark, reverse it THERE (0082.down re-darks the
+-- exact same pair) — that is the file that owns the release, and reversing it is
+-- an honest, auditable act. Reversing 0096 would just re-arm an ordering bug.
+--
+-- TestMigration0096_DownIsADeliberateNoOp asserts this file does NOT re-dark, and
+-- — because an absence assertion alone would happily accept a zero-byte file —
+-- also asserts that it explains itself and names 0082.
+-- =============================================================================
+SELECT 1;

@@ -1,0 +1,82 @@
+-- =============================================================================
+-- chora-consumption : 0096_familiar_answerable_activation_reassert.up.sql
+--
+-- Domain   : Content Consumption (5 core)
+-- Database : chora_consumption
+-- Context  : W0-F2b (migration-lane reconciliation). This migration REPAIRS AN
+--            ORDERING DEFECT. It makes no new release decision — every release
+--            decision here was already made by 0082.
+--
+-- THE DEFECT
+-- ----------
+-- runner.sh decides pending-vs-applied SOLELY from chora_runner_schema_migrations,
+-- keyed on FILENAME. Two files disagree about these two Skills:
+--
+--   0075_familiar_answerable_activation  -> SET active = FALSE  (the DARK hold,
+--                                           pending the ADR-174 §8 answerable eval)
+--   0082_familiar_answerable_activation_flip -> SET active = TRUE (the eval PASSED
+--                                           on 2026-07-09; this is the release)
+--
+-- 0082 HAS a tracker row. 0075 does NOT. So on its next run the migrate job
+-- APPLIES the unrecorded 0075 (active = FALSE) and SKIPS the recorded 0082 —
+-- and the OLDER file's intent silently overwrites the NEWER applied one.
+--
+-- The result: quiz_me and socratic_drill — two live, eval-gate-passed,
+-- learner-facing Skills — go DARK. There is no error, no wedge, and the job
+-- reports SUCCESS. It is quieter than the 0001_sharing_schema DROP bomb
+-- (CHO-2193), because that one at least made noise.
+--
+-- WHY A NEW MIGRATION AND NOT A TRACKER ROW
+-- -----------------------------------------
+-- Recording 0075 as "applied" would also stop the replay, but it asserts a fact
+-- that is FALSE — 0075 has never run against this database. The tracker is the
+-- only thing standing between the runner and a wedged lane; a lie in it is a lie
+-- in the one place that must be trustworthy. So 0075 stays honestly unapplied and
+-- WILL run, and this file runs immediately after it and restores 0082's decision.
+-- The migration history then reads truthfully: held dark -> eval passed, released
+-- -> re-asserted after an out-of-order replay.
+--
+-- THE ORDERING IS THE FIX
+-- -----------------------
+-- runner.sh applies PENDING files in sort order. 0096 > 0075, so the repair lands
+-- after the damage. Renumber this file below 0075 and it runs BEFORE the damage
+-- and does nothing at all — silently. TestMigration0096_SortsAfterTheMigrationItRepairs
+-- pins the ordering so a renumber cannot quietly disarm it.
+--
+-- Activation is DATA, not schema (spec §5 P1-delta #4): a standalone UPDATE,
+-- mirroring 0082 exactly. The dark seed (0061) and the 0075 hold are untouched.
+-- The UPDATE list is pinned to seedspec.P2AnswerableActivationTwo by
+-- TestMigration0096_ReassertsExactlyP2AnswerableTwo. A repair migration is a
+-- tempting place to quietly widen an activation list; that would breach the
+-- ADR-174 §8 gate exactly as it would in 0082.
+--
+-- NB on fog_scout, because 0075's and 0082's headers will mislead you here: they
+-- say it "stays dark — builder + eval have not landed". That was TRUE WHEN THEY
+-- WERE WRITTEN and is FALSE NOW — 0085_familiar_scout_activation released it
+-- (live: active = true; buildFogScoutTurn is wired). 0096 still must not touch
+-- fog_scout, but the reason is SCOPE, not darkness: its activation is owned by
+-- 0085, and a repair for the answerable pair has no business restating another
+-- wave's decision. Do not copy the stale justification forward again.
+--
+-- Idempotent: a no-op on already-active rows (which is the state today — this
+-- file changes nothing unless 0075 has just re-darkened them).
+--
+-- ⚠⚠ DO NOT PRE-APPLY OR PRE-RECORD THIS FILE. IT MUST STAY PENDING.
+-- -----------------------------------------------------------------------------
+-- Running `migration-tracker.sh apply chora-consumption 0096_...` looks harmless
+-- (it is a no-op today) and it DISARMS THE REPAIR: it would give 0096 a tracker
+-- row, so the next migrate run applies the still-unrecorded 0075 (active = FALSE)
+-- and then SKIPS the now-recorded 0096 — and the Skills stay dark forever. The
+-- repair works ONLY while BOTH files are pending, so the runner applies them in
+-- order, 0075 then 0096, in the same pass.
+--
+-- Corollary for the migrate lane: whatever fires 0075 MUST also carry 0096.
+-- runner.sh applies what is STAGED IN GCS, not what is in git. A bare re-run of
+-- the Job over a stale GCS snapshot could hold 0075 and not 0096. Always re-stage
+-- the lane (the ordinary cloudbuild-migrations-apply pipeline rsyncs git -> GCS
+-- and THEN fires) rather than firing the Job alone.
+-- =============================================================================
+UPDATE familiar_skill_catalog
+   SET active = TRUE
+ WHERE skill_key IN ('quiz_me', 'socratic_drill')
+   AND deleted_at IS NULL;

@@ -1,0 +1,50 @@
+{
+  "ancestors": [
+    "Fraction basics",
+    "Number sense"
+  ],
+  "atom_catalogue": [
+    {
+      "atom_id": "01970000-0000-7000-a000-0000000000f1",
+      "atom_type": "mcq",
+      "relevance": "on_theme",
+      "title": "Comparing Fractions: 2/3 vs 3/5",
+      "topic_tags": []
+    },
+    {
+      "atom_id": "01970000-0000-7000-a000-0000000000f2",
+      "atom_type": "mcq",
+      "relevance": "off_theme",
+      "title": "Photosynthesis and the Calvin cycle",
+      "topic_tags": [
+        "biology"
+      ]
+    }
+  ],
+  "existing_concepts": [
+    {
+      "concept_id": "01970000-0000-7000-b000-0000000000c2",
+      "title": "Numerator"
+    }
+  ],
+  "familiar_id": "01970000-0000-7000-a000-0000000000f1",
+  "focal_atom_refs": [],
+  "focal_concept_id": "01970000-0000-7000-b000-0000000000c1",
+  "focal_title": "Comparing fractions",
+  "goal_title": "Fractions",
+  "learner_gcid": "01970000-0000-7000-8000-0000000000aa",
+  "map_theme": "Fractions",
+  "request_source": "learner_request",
+  "requested_at": "2026-07-21T00:00:00Z",
+  "sub_goal": "Compare two fractions by finding a common denominator",
+  "tenant_id": "11111111-1111-7111-8111-111111111111",
+  "weakness": {
+    "descriptor": "Compares fractions by numerator alone, ignoring the denominator",
+    "evidence": [
+      "picked 3/8 over 1/2"
+    ],
+    "misconceptions": [
+      "bigger numerator means bigger fraction"
+    ]
+  }
+}

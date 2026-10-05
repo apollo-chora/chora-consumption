@@ -1,0 +1,211 @@
+# PII_Closure_Map for chora-consumption domain.
+#
+# Source-of-truth: .claude/skills/account-closure-saga/SKILL.md
+# Owning team: Team 1 (Content). Owning DB: chora_consumption.
+#
+# Consumption owns the closing user's learning history. Per ADR-143,
+# Knowledge Graph is per-user — most KG data CASCADES on closure; aggregate
+# pedagogical metrics survive in anonymised form.
+
+domain: chora_consumption
+version: "1.0"
+
+fields_to_tokenize:
+  - table: atomic_session
+    columns:
+      # Session belongs entirely to the closed user — drop personal notes.
+      - column: notes
+        strategy: drop
+        value: ""
+      - column: actor_display_name
+        strategy: tombstone_string
+        value: "Former member"
+      # Score, duration, completion fields preserved for IMDA reporting.
+
+  - table: learning_path
+    columns:
+      - column: learner_display_name
+        strategy: tombstone_string
+        value: "Former member"
+
+  - table: companion_entity
+    columns:
+      # Companion = RPG companion (NOT the AI agent — see feedback_companion_vs_agent)
+      # Personal customisation drops; aggregate stats preserved.
+      - column: companion_name
+        strategy: drop
+        value: ""
+      - column: voice_settings_json
+        strategy: drop
+        value: ""
+
+  - table: kg_map_cluster
+    columns:
+      # Per-user MapCluster cascades on user closure (cluster IS user-bound)
+      - column: title
+        strategy: drop
+        value: ""
+      - column: description
+        strategy: drop
+        value: ""
+
+  - table: kg_hexagon_nodes
+    columns:
+      # Cached fog data is bound to user — drop fog cache entries.
+      - column: prompt_snapshot
+        strategy: drop
+        value: ""
+
+  # Companion goal-memory reflection (CHO-2118, migration 0092) — the tier-2
+  # cache behind the Companion tab. Same KIND of thing as kg_hexagon_nodes above:
+  # a DERIVED per-learner cache, never a source of truth. But unlike the fog
+  # cache it stores generated PROSE ABOUT THE LEARNER, so closure must reach it.
+  - table: companion_goal_knowledge
+    columns:
+      # The reflection is LLM-written, first-person narrative about this specific
+      # learner — what the Companion remembers of their sessions, what they are
+      # strong at, and which weaknesses they keep struggling with. It is the most
+      # personal free text this domain holds. Drop it.
+      - column: synthesis_text
+        strategy: drop
+        value: ""
+      # content_hash digests the synthesis INPUTS (the learner's weakness set +
+      # memory records). Not reversible to text, but it is a stable per-learner
+      # digest whose ONLY purpose is drift-detection on a live row — worthless
+      # once the row is tombstoned. Dropped as a backstop: Security & Privacy
+      # outranks Composability in the conflict order.
+      - column: content_hash
+        strategy: drop
+        value: ""
+      # status / invalidation_reason / timestamps / generated_by_model_id /
+      # prompt_version survive as non-PII operational + ADR-197 decision-stamp
+      # metadata (IMDA D1 accountability), carrying no GCID linkage after
+      # pseudonymisation.
+
+  # Conversation memory (F4 / ADR-173, migration 0045), register 6.4 R6.
+  #
+  # ⚠⚠ READ THIS BEFORE TRUSTING THE ENTRY BELOW. Naming a table here does NOT
+  # currently erase anything. ClosureRepository.Pseudonymise executes no
+  # per-table UPDATE at all: it writes one ack row into
+  # closure_pseudonymisation_state and reports rows_touched as a DECLARED-INTENT
+  # count (the sum of columns listed in this file), which is why adding rows here
+  # makes that number go up while the data stays put. The adapter says so itself
+  # (internal/adapter/repo/pg/closure_repository.go, "What this adapter does NOT
+  # do"), and the CHO-2198 durability report found the same no-op Pseudonymise in
+  # all 9 closure-saga services. So this entry is the DECLARED CONTRACT, correct
+  # and ready for the executor, and it is INERT until that executor exists.
+  # Crypto-shred does not reach conversation memory today.
+  #
+  # What DOES reach it today, and is real: the R6 TTL sweep
+  # (pg.PurgeExpired) and the learner's own delete
+  # (DELETE /v1/me/companions/{id}/memory/{memoryId}), both of which tombstone the
+  # row AND redact these same two columns.
+  - table: companion_memory_recall
+    columns:
+      # The learner's actual conversation with their Companion: what they asked,
+      # struggled with, and were told. The most personal free text this domain
+      # holds, more so than companion_goal_knowledge above, because it is their
+      # own words rather than prose written about them. Drop it.
+      - column: content_text
+        strategy: drop
+        value: "[redacted]"
+      # The 768-d vector OF that conversation. Dropped alongside the text and not
+      # as an afterthought: an embedding is a lossy but genuine representation of
+      # its source, it stays cosine-matchable, and inversion back toward the text
+      # is a known attack class. Erasing the prose while leaving the vector would
+      # still answer "roughly what did this learner talk about", which is the
+      # question closure exists to stop answering. Security & Privacy outranks
+      # Composability in the conflict order.
+      - column: embedding
+        strategy: drop
+        value: "zero_vector"
+      # A grounded note's citations can name what the learner was researching.
+      # memory_type / model_id / timestamps survive as non-PII operational
+      # metadata carrying no GCID linkage after pseudonymisation.
+      - column: source_metadata
+        strategy: drop
+        value: "null"
+
+  # Growth-Edge analyser (ADR-205) — per-learner weakness model + upload ledger.
+  - table: learner_weakness
+    columns:
+      # The distilled descriptor holds the learner's specific misconceptions +
+      # redacted sample-wrong exemplars (ADR-205 D8) — personal; drop on closure.
+      # concept_key / category / tags / strength survive as anonymised
+      # pedagogical metrics (no GCID linkage after pseudonymisation).
+      - column: descriptor
+        strategy: drop
+        value: "{}"
+      # The human concept_label can name a sensitive struggle — tombstone it;
+      # the concept_key slug remains for aggregate rollup.
+      - column: concept_label
+        strategy: tombstone_string
+        value: "Former member growth edge"
+
+  - table: weakness_doc_uploads
+    columns:
+      # The raw upload blob is DEK-crypto-shredded on analyse (ADR-205 D8 /
+      # ADR-186); drop the blob URI ref + any failure text on closure as a
+      # backstop (upload_kind / status / counts / timestamps /
+      # upload_rights_consent_at / blob_deleted_at are non-PII audit).
+      - column: source_blob_uri
+        strategy: drop
+        value: ""
+      - column: failure_reason
+        strategy: drop
+        value: ""
+
+  # Ritual runs (ADR-219 D4 / ADR-257). The row is an audit + pricing fact and is
+  # never deleted; closure pseudonymises owner_gcid like every other row here.
+  # revision_no / status / mana_charged / reservation_id / sink_ref / timestamps
+  # survive as non-PII operational and billing metadata.
+  - table: companion_ritual_runs
+    columns:
+      # S8 (ADR-257 section 6 clause 6). What the learner's Companion actually
+      # SAID to them, step by step: the same class of free text as
+      # companion_memory_recall.content_text above and dropped for the same
+      # reason. It is not prose written about the learner, it is the answer they
+      # asked for, and a run story that survived closure would still answer
+      # "what was this person working on".
+      #
+      # decision_stamp is deliberately NOT listed: it holds prompt version,
+      # prompt hash and tool ids, which are model internals with no GCID linkage
+      # once owner_gcid is pseudonymised, and they are the auditor's record of a
+      # decision that was really made.
+      - column: step_outputs
+        strategy: drop
+        value: "[]"
+      # The learner NAMES their own ritual ("Exam panic drill"), so ritual_name is
+      # learner-authored free text on the same footing as learner_weakness
+      # .concept_label above. Tombstoned rather than dropped: the run history
+      # stays readable as a list, without carrying the name the learner chose.
+      - column: ritual_name
+        strategy: tombstone_string
+        value: "Former member ritual"
+
+  - table: weakness_blob_dek_wrap
+    columns:
+      # The per-blob wrapped DEK (ADR-186 envelope crypto-shred / ADR-205 D8). The
+      # DEK is normally tombstoned on analyse-complete (shred-after-diagnose) or by
+      # the TTL sweep; this is the CLOSURE backstop — scrub any wrapped DEK still
+      # present at user closure so the (transient) ciphertext becomes permanently
+      # undecryptable. The plaintext DEK is NEVER stored; kek_version / created_at
+      # are non-PII operational metadata.
+      - column: wrapped_dek
+        strategy: drop
+        value: ""
+
+retention_days_by_jurisdiction:
+  EU: 2557
+  SG: 2557
+  US: 1826
+  ZA: 1826
+  BR: 1826
+  default: 2557
+
+on_creator_closure:
+  # Consumption is reader-side; user closure means atomic_session +
+  # companion + KG MapCluster all cascade-pseudonymise (aggregate metrics
+  # preserved for IMDA D1 accountability).
+  strategy: cascade_pseudonymise
+  show_authorship_as: "Former member"

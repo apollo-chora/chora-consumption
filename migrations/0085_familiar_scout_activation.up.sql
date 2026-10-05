@@ -1,0 +1,56 @@
+-- =============================================================================
+-- chora-consumption : 0085_familiar_scout_activation.up.sql
+--
+-- Domain   : Content Consumption (5 core)
+-- Database : chora_consumption
+-- Context  : Familiar Growth & Grimoire — fog_scout "suggestion-inbox scout"
+--            (P2 wave C) RELEASE. fog_scout SCOUTS the fog around the learner's
+--            live KG map and proposes NEW concepts to explore, landing them as
+--            pending Suggestions in the WS-4 curation inbox. Its GROUNDED-
+--            RECONCILE invoke-runner builder has landed (buildFogScoutTurn: a
+--            DETERMINISTIC map-adjacent topic pool → ONE fenced turn →
+--            edgescout.Reconcile hallucination floor → SinkSuggestionInbox write),
+--            releasing the LAST of the P2 launch remainder (after 0073 sight +
+--            0082 answerable).
+--
+--            HOLD RELEASED — APPLIED 2026-07-10 08:59 UTC. fog_scout is ACTIVE
+--            in production.
+--
+--            This migration was authored under an ADR-174 §8 eval HOLD: it
+--            must not be applied until fog_scout's ADR-174 §8 grounded-reconcile
+--            eval gate had PASSED,
+--            because flipping active=TRUE before the gate would release an
+--            un-evaluated LLM Skill — exactly what §8 forbids (the same gating
+--            that held the sight skills dark until 0073 and the answerable skills
+--            until 0082).
+--
+--            THE GATE RAN AND PASSED. Vertex/BQ run `fa-fog-scout-s8fog-164625`:
+--            facts_groundedness 1.0 / safety 1.0 / IF 4.67 / adversarial 1.0. The
+--            07-11 CHO-2117 goal-scoping re-gate re-PASSED after the rationale-
+--            shape anchor fix (1.0 / 5.0 / 1.0, adversarial 12/12). The owner
+--            flipped it; the migration was applied the same day.
+--
+--            ⚠ The hold banner that used to sit here outlived the hold by
+--            four days and was read as live truth — it is why MEMORY.md, a
+--            handoff, and CHO-2186 all recorded fog_scout as "DARK in prod,
+--            built but unreachable" while it was serving traffic. A hold marker
+--            is a claim about the DATABASE; when the hold lifts, the marker must
+--            die with it. Deployed reality outranks this comment — always check
+--            `familiar_skill_catalog.active` + chora_runner_schema_migrations,
+--            never a header.
+--
+--            Deliberately EXACTLY seedspec.P2ScoutActivationOne (fog_scout). No
+--            other catalogue key may ride the UPDATE — the drift test
+--            TestMigration0085_ActivatesExactlyP2ScoutOne binds the list.
+--
+-- Activation is DATA, not schema (spec §5 P1-delta #4): a standalone UPDATE, the
+-- dark seed (0061) untouched.
+--
+-- Idempotent: re-running is a no-op on an already-active row. Reversible via the
+-- .down.sql (flips it back dark → equip/invoke 409s SKILL_NOT_ACTIVE).
+-- =============================================================================
+
+UPDATE familiar_skill_catalog
+   SET active = TRUE
+ WHERE skill_key IN ('fog_scout')
+   AND deleted_at IS NULL;
