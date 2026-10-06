@@ -25,7 +25,7 @@ func TestBusBindings_AllSubscribersBoundWhenWired(t *testing.T) {
 
 	wireSubscriberBusBindings(context.Background(), srv, ext, bus)
 
-	subs := bus.await(t, 12)
+	subs := bus.await(t, 13)
 	got := map[string]bool{}
 	for _, s := range subs {
 		got[s.subject] = true
@@ -37,6 +37,7 @@ func TestBusBindings_AllSubscribersBoundWhenWired(t *testing.T) {
 		"chora.consumption.learning_path.bootstrapped.v1",
 		"chora.delivery.course.content_composed.v1",
 		"chora.delivery.course.created.v1",
+		"chora.delivery.course.released.v1",
 		"chora.delivery.certification.issued.v1",
 		"chora.consumption.learning_path.completed.v1",
 		"chora.delivery.submission.graded.v1",

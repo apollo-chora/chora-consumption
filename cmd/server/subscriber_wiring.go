@@ -85,6 +85,7 @@ func wireSubscriberBusBindings(ctx context.Context, srv *httpadapter.Server, ext
 	}
 	if ext.CourseMetadataSub != nil {
 		bind("chora-consumption.course-metadata", subscribers.TopicDeliveryCourseCreated, subscribers.CourseMetadataHandler(ext.CourseMetadataSub))
+		bind("chora-consumption.course-metadata-released", subscribers.TopicDeliveryCourseReleased, subscribers.CourseMetadataHandler(ext.CourseMetadataSub))
 		log.Printf("consumption: eventbus binding: chora.delivery.course.{created,released}.v1 → course_directory projection (CHO-2059)")
 	}
 	if ext.LearnerProfileSub != nil {
