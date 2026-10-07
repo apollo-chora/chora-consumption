@@ -11,7 +11,7 @@
 // domain layer. It declares the CompanionMemory port the chat handler depends
 // on — it MUST NOT import any Vertex AI / pgvector / SDK code, build URLs, or
 // carry endpoint config. The concrete adapter (a pgvector-backed repo in the
-// pg adapter package) lands separately; the precomputed 768-d embedding is
+// pg adapter package) lands separately; the precomputed 1024-d embedding is
 // supplied by the caller (the Embedder port produced it).
 package companion
 
@@ -104,7 +104,7 @@ type RecordMemoryInput struct {
 	CompanionID     string
 	MemoryType      string // "" defaults to "chat_turn"
 	ContentText     string
-	Embedding       []float32 // 768-d
+	Embedding       []float32 // 1024-d
 	ModelID         string
 	SourceTurnID    string // optional
 	SourceSessionID string // optional

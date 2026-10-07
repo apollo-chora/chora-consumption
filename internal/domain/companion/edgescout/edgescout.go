@@ -104,7 +104,7 @@ const (
 var ErrBadReply = errors.New("edgescout: malformed extraction reply")
 
 // WeaknessSignal is one active Growth Edge (learner_weakness read slice).
-// Embedding is the stored 768-d vector (pre-embedded at upsert — no re-embed).
+// Embedding is the stored 1024-d vector (pre-embedded at upsert — no re-embed).
 type WeaknessSignal struct {
 	Label     string
 	Strength  float64

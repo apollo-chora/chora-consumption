@@ -4,7 +4,7 @@
 //
 // Per multi-tenant-rls SKILL every read/write runs rls.ApplySession (SET LOCAL
 // chora.tenant_id [+ chora.user_gcid]) inside the transaction BEFORE the domain
-// query; per-learner scoping is an explicit learner_gcid predicate. The 768-d
+// query; per-learner scoping is an explicit learner_gcid predicate. The 1024-d
 // concept_embedding is bound as a Postgres text literal `[a,b,...]` cast with
 // `$N::vector` (no pgx binary codec wired) — identical to the F4 companion memory
 // + chora-creation atom_embeddings paths. The descriptor JSONB is marshalled to

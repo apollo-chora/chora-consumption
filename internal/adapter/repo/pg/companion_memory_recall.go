@@ -11,7 +11,7 @@
 //	  scope_key         TEXT NOT NULL          -- 'companion:{companion_id}'
 //	  memory_type       VARCHAR(32) NOT NULL DEFAULT 'chat_turn'
 //	  content_text      TEXT NOT NULL
-//	  embedding         vector(768) NOT NULL
+//	  embedding         vector(1024) NOT NULL
 //	  model_id          VARCHAR(64) NOT NULL
 //	  source_turn_id    UUID
 //	  source_session_id UUID
@@ -33,7 +33,7 @@
 // set tenant_id on ctx BEFORE invoking these methods — otherwise the methods
 // return rls.ErrNoTenantContext from ApplySession.
 //
-// pgvector has no first-class pgx binary codec wired here, so the 768-d
+// pgvector has no first-class pgx binary codec wired here, so the 1024-d
 // embedding is bound as a Postgres text literal `[a,b,...]` and cast with
 // `$N::vector` in SQL — identical to the chora-creation atom_embeddings path.
 package pg
@@ -104,7 +104,7 @@ var _ companion.CompanionMemory = (*CompanionMemoryRepo)(nil)
 // Record — persist one per-Companion memory
 // ---------------------------------------------------------------------------
 
-// Record persists a single memory row. The 768-d embedding is precomputed by
+// Record persists a single memory row. The 1024-d embedding is precomputed by
 // the Embedder port and bound as a `[...]::vector` literal. memory_type defaults
 // to "chat_turn"; scope_key is minted via companion.MemoryScopeKey; expires_at is
 // Now+TTL when TTL > 0, else NULL (no expiry).
@@ -350,7 +350,7 @@ UPDATE companion_memory_recall
 // carries CHECK (length(content_text) > 0) from mig 0045.
 const memoryRedactedTombstone = "[redacted]"
 
-// redactedEmbedding is the 768-d zero vector written over the embedding when a
+// redactedEmbedding is the 1024-d zero vector written over the embedding when a
 // memory is expired or deleted.
 //
 // The embedding is redacted alongside the text and that is not belt-and-braces.
@@ -361,7 +361,7 @@ const memoryRedactedTombstone = "[redacted]"
 // answering. Zero is safe here because these rows carry deleted_at and Recall
 // excludes them, so nothing ever computes a distance against them (cosine
 // against a zero vector is undefined).
-const redactedEmbedding = "array_fill(0::real, ARRAY[768])::vector"
+const redactedEmbedding = "array_fill(0::real, ARRAY[1024])::vector"
 
 // purgeExpiredMemorySQL tombstones AND empties every live row whose TTL has
 // passed. Scoped to the ctx tenant by RLS (there is no cross-tenant sweep: the

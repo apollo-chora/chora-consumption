@@ -69,9 +69,11 @@ const (
 	// cannot drift apart.
 	gatewayEmbedLogicalModelID = "text-embedding-004"
 
-	// gatewayEmbedOutputDimensions matches every pgvector(768) column this
-	// service writes. Sent explicitly, never left to a remote default.
-	gatewayEmbedOutputDimensions = 768
+	// gatewayEmbedOutputDimensions matches every pgvector(1024) column this
+	// service writes — the LiquidAI LFM2.5 embedding route's native width (see
+	// the registry's `text-embedding-004` entry). Sent explicitly, never left
+	// to a remote default.
+	gatewayEmbedOutputDimensions = 1024
 )
 
 // embedGRPCClient is the minimal slice of mgv1.ModelGatewayServiceClient the

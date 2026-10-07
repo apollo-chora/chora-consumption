@@ -29,7 +29,7 @@ func NewLearnerWeaknessEmbedder(inner companion.Embedder) *LearnerWeaknessEmbedd
 
 var _ learner_weakness.Embedder = (*LearnerWeaknessEmbedder)(nil)
 
-// Embed produces the 768-d RETRIEVAL_DOCUMENT embedding for a concept label.
+// Embed produces the 1024-d RETRIEVAL_DOCUMENT embedding for a concept label.
 func (e *LearnerWeaknessEmbedder) Embed(ctx context.Context, text, tenantID string) ([]float32, error) {
 	return e.inner.Embed(ctx, companion.EmbedInput{
 		Text:     text,

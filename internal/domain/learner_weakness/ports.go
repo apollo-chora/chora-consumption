@@ -16,7 +16,7 @@ type UpsertInput struct {
 	LearnerGCID     string
 	ConceptKey      string // optional; derived from ConceptLabel when blank
 	ConceptLabel    string
-	Embedding       []float32 // 768-d text-embedding-004, precomputed by the caller
+	Embedding       []float32 // 1024-d text-embedding-004, precomputed by the caller
 	TopicID         string    // optional nearest-TopicNode resolution
 	TargetConceptID string    // ADR-238: resolved on-map ConceptNode id (goal-scoped nearest-match at ingest). "" = UNMATCHED / unresolved.
 	Category        string    // optional coarse bucket
@@ -110,7 +110,7 @@ type Repository interface {
 	SetCachedDrillAtoms(ctx context.Context, learnerGCID, id string, atomIDs []string, now time.Time) error
 }
 
-// Embedder embeds a concept label into the 768-d text-embedding-004 space used
+// Embedder embeds a concept label into the 1024-d text-embedding-004 space used
 // for dedup, nearest-topic resolution, and semantic drill-atom retrieval. The
 // adapter wraps the same direct-Vertex client as the Companion memory path (the
 // gateway has no embeddings RPC).

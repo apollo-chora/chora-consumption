@@ -115,7 +115,7 @@ type LearnerWeakness struct {
 	LearnerGCID        string
 	ConceptKey         string    // normalised slug
 	ConceptLabel       string    // Companion-facing natural phrase
-	Embedding          []float32 // 768-d text-embedding-004
+	Embedding          []float32 // 1024-d text-embedding-004
 	TopicID            string    // "" = unresolved to a TopicNode
 	TargetConceptID    string    // ADR-238: resolved on-map ConceptNode id; "" = UNMATCHED / pre-0098
 	Category           string    // "" = none

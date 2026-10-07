@@ -4,7 +4,7 @@
 // The chat handler embeds (a) the incoming learner message to RECALL the
 // nearest prior memories and (b) the assembled turn (message + reply) to
 // RECORD a new memory. Both go through this port. The concrete adapter is a
-// direct Vertex AI Embeddings API client (text-embedding-004, 768-d) in the
+// direct Vertex AI Embeddings API client (text-embedding-004, 1024-d) in the
 // clients package — chora-model-gateway exposes only a text-generation
 // `Invoke` RPC, so embeddings cannot route through it.
 //
@@ -48,8 +48,8 @@ type EmbedInput struct {
 }
 
 // Embedder produces a dense vector embedding for a text. The returned slice is
-// the model's native dimensionality (768 for text-embedding-004) and is bound
-// directly into the pgvector(768) column by the CompanionMemory adapter.
+// the model's native dimensionality (1024 for text-embedding-004) and is bound
+// directly into the pgvector(1024) column by the CompanionMemory adapter.
 //
 // A nil Embedder disables F4 memory (see package doc).
 type Embedder interface {
