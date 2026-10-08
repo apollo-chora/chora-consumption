@@ -940,8 +940,7 @@ func decodeCampaignGoalSealedPayload(data []byte) (CampaignGoalSealedPayload, er
 // ---------------------------------------------------------------------------
 
 const (
-	TopicPaymentsCompanionEggCaptured           = "chora.payments.companion_egg.payment_captured.v1"
-	TopicPaymentsFamiliarEggCapturedLegacy     = "chora.payments.familiar_egg.payment_captured.v1"
+	TopicPaymentsCompanionEggCaptured           = "chora.payments.companion_egg_purchase.payment_captured.v1"
 	TopicSharingPostCreated                     = "chora.sharing.post.created.v1"
 	TopicSharingReactionAdded                   = "chora.sharing.reaction.added.v1"
 )
@@ -1000,11 +999,7 @@ func CompanionGrowthHandler(s *CompanionGrowthSubscriber, derived *DerivedWeakne
 				return derived.HandleAtomSessionCompleted(ctx, env, p)
 			}
 			return nil
-		case "chora.consumption.kg.hexagon_expanded.v1":
-			return s.HandleHexagonExpanded(ctx, env, KGHexagonExpandedPayload{
-				LearnerGCID: strField(raw, "learner_gcid"),
-			})
-		case "chora.consumption.kg.junction_accepted.v1":
+		case events.TopicKGJunctionAccepted:
 			return s.HandleJunctionAccepted(ctx, env, KGJunctionAcceptedPayload{
 				LearnerGCID: strField(raw, "learner_gcid"),
 			})
@@ -1037,7 +1032,7 @@ func EggPurchaseHandler(s *ProvisionEggSubscriber) eventbus.Handler {
 			return errors.New("subscribers: egg_purchase handler not initialised")
 		}
 		topic := msg.Subject
-		if topic != TopicPaymentsCompanionEggCaptured && topic != TopicPaymentsFamiliarEggCapturedLegacy {
+		if topic != TopicPaymentsCompanionEggCaptured {
 			return nil
 		}
 		env := projectEnvelope(msg.Envelope)

@@ -65,8 +65,8 @@ func TestSubscriber_AtomSessionCompleted_ReviewDueAwardErrorPropagates(t *testin
 func TestSubscriber_AwardSimple_NoCompanionSilentDrop(t *testing.T) {
 	ap := &fakeAwardPort{}
 	sub := subscribers.NewCompanionGrowthSubscriber(ap, &fakeResolver{err: subscribers.ErrNoCompanion})
-	if err := sub.HandleHexagonExpanded(context.Background(), validEnv(),
-		subscribers.KGHexagonExpandedPayload{LearnerGCID: "user-1"}); err != nil {
+	if err := sub.HandleJunctionAccepted(context.Background(), validEnv(),
+		subscribers.KGJunctionAcceptedPayload{LearnerGCID: "user-1"}); err != nil {
 		t.Errorf("expected silent drop on ErrNoCompanion, got %v", err)
 	}
 	if len(ap.Calls()) != 0 {
@@ -77,8 +77,8 @@ func TestSubscriber_AwardSimple_NoCompanionSilentDrop(t *testing.T) {
 func TestSubscriber_AwardSimple_ResolverErrorPropagates(t *testing.T) {
 	ap := &fakeAwardPort{}
 	sub := subscribers.NewCompanionGrowthSubscriber(ap, &fakeResolver{err: errors.New("resolver down")})
-	if err := sub.HandleHexagonExpanded(context.Background(), validEnv(),
-		subscribers.KGHexagonExpandedPayload{LearnerGCID: "user-1"}); err == nil {
+	if err := sub.HandleJunctionAccepted(context.Background(), validEnv(),
+		subscribers.KGJunctionAcceptedPayload{LearnerGCID: "user-1"}); err == nil {
 		t.Error("expected resolver error to propagate from awardSimple")
 	}
 }

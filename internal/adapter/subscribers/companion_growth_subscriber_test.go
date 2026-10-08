@@ -189,21 +189,6 @@ func TestSubscriber_BadEnvelope(t *testing.T) {
 	}
 }
 
-func TestSubscriber_HexExpand(t *testing.T) {
-	ap := &fakeAwardPort{}
-	r := &fakeResolver{companionID: "fam-1"}
-	sub := subscribers.NewCompanionGrowthSubscriber(ap, r)
-	err := sub.HandleHexagonExpanded(context.Background(), validEnv(),
-		subscribers.KGHexagonExpandedPayload{LearnerGCID: "user-1"})
-	if err != nil {
-		t.Fatalf("Handle: %v", err)
-	}
-	calls := ap.Calls()
-	if calls[0].Source != "hex_expand" || calls[0].RequestedDelta != 0 {
-		t.Errorf("hex_expand call = %+v", calls[0])
-	}
-}
-
 func TestSubscriber_JunctionAccepted(t *testing.T) {
 	ap := &fakeAwardPort{}
 	sub := subscribers.NewCompanionGrowthSubscriber(ap, &fakeResolver{companionID: "fam-1"})
@@ -273,10 +258,10 @@ func TestSubscriber_IdempotencyDedupe(t *testing.T) {
 	ap := &fakeAwardPort{}
 	sub := subscribers.NewCompanionGrowthSubscriber(ap, &fakeResolver{companionID: "fam-1"})
 	env := validEnv()
-	_ = sub.HandleHexagonExpanded(context.Background(), env,
-		subscribers.KGHexagonExpandedPayload{LearnerGCID: "user-1"})
-	_ = sub.HandleHexagonExpanded(context.Background(), env,
-		subscribers.KGHexagonExpandedPayload{LearnerGCID: "user-1"})
+	_ = sub.HandleJunctionAccepted(context.Background(), env,
+		subscribers.KGJunctionAcceptedPayload{LearnerGCID: "user-1"})
+	_ = sub.HandleJunctionAccepted(context.Background(), env,
+		subscribers.KGJunctionAcceptedPayload{LearnerGCID: "user-1"})
 	if len(ap.Calls()) != 1 {
 		t.Errorf("expected dedupe, got %d", len(ap.Calls()))
 	}
@@ -526,19 +511,19 @@ func TestSubscriber_AwardSimple_TransientAwardFailure_RedeliveryLands(t *testing
 	ap := &flakyAwardPort{failN: 1}
 	sub := subscribers.NewCompanionGrowthSubscriber(ap, &fakeResolver{companionID: "fam-1"})
 	env := validEnv()
-	p := subscribers.KGHexagonExpandedPayload{LearnerGCID: "user-1"}
+	p := subscribers.KGJunctionAcceptedPayload{LearnerGCID: "user-1"}
 
-	if err := sub.HandleHexagonExpanded(context.Background(), env, p); err == nil {
+	if err := sub.HandleJunctionAccepted(context.Background(), env, p); err == nil {
 		t.Fatal("first delivery: expected transient award error to propagate (nack)")
 	}
-	if err := sub.HandleHexagonExpanded(context.Background(), env, p); err != nil {
+	if err := sub.HandleJunctionAccepted(context.Background(), env, p); err != nil {
 		t.Fatalf("redelivery: %v", err)
 	}
 	calls := ap.Calls()
 	if len(calls) != 1 {
 		t.Fatalf("successful awards = %d, want exactly 1 (failed delivery must NOT burn the dedupe key)", len(calls))
 	}
-	if calls[0].Source != "hex_expand" {
+	if calls[0].Source != "junction_accepted" {
 		t.Errorf("source = %q", calls[0].Source)
 	}
 }

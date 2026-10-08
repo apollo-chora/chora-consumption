@@ -1,6 +1,6 @@
 // companion_growth_subscriber.go — ADR-149 Iter G.2.
 //
-// CompanionGrowthSubscriber consumes the 7 EXP source topics and calls
+// CompanionGrowthSubscriber consumes the 6 EXP source topics and calls
 // growth.Service.AwardExp idempotently. ProvisionEggSubscriber consumes
 // chora.tenancy.companion_egg.payment_succeeded.v1 and provisions a Stage-0
 // companion_instances row.
@@ -51,7 +51,7 @@ type AwardExpPort interface {
 	AwardExp(ctx context.Context, in growth.AwardExpInput) (*growth.AwardExpResponse, error)
 }
 
-// CompanionGrowthSubscriber handles the 7 EXP source topics.
+// CompanionGrowthSubscriber handles the 6 EXP source topics.
 type CompanionGrowthSubscriber struct {
 	growth   AwardExpPort
 	resolver CompanionResolver
@@ -146,18 +146,7 @@ func (s *CompanionGrowthSubscriber) HandleAtomSessionCompleted(ctx context.Conte
 	return nil
 }
 
-// KGHexagonExpandedPayload mirrors chora.consumption.kg.hexagon_expanded.v1.
-type KGHexagonExpandedPayload struct {
-	LearnerGCID string
-}
-
-// HandleHexagonExpanded awards EXP for KG hexagon expansion (curiosity).
-func (s *CompanionGrowthSubscriber) HandleHexagonExpanded(ctx context.Context, env events.Envelope, p KGHexagonExpandedPayload) error {
-	return s.awardSimple(ctx, env, p.LearnerGCID, "hex_expand", 0,
-		"chora.consumption.kg.hexagon_expanded.v1")
-}
-
-// KGJunctionAcceptedPayload mirrors chora.consumption.kg.junction_accepted.v1.
+// KGJunctionAcceptedPayload mirrors chora.consumption.kg_junction.accepted.v1.
 type KGJunctionAcceptedPayload struct {
 	LearnerGCID string
 }
@@ -165,7 +154,7 @@ type KGJunctionAcceptedPayload struct {
 // HandleJunctionAccepted awards EXP for rare KG junction acceptance.
 func (s *CompanionGrowthSubscriber) HandleJunctionAccepted(ctx context.Context, env events.Envelope, p KGJunctionAcceptedPayload) error {
 	return s.awardSimple(ctx, env, p.LearnerGCID, "junction_accepted", 0,
-		"chora.consumption.kg.junction_accepted.v1")
+		events.TopicKGJunctionAccepted)
 }
 
 // DailyDoseServedPayload mirrors chora.consumption.daily_dose.served.v1.

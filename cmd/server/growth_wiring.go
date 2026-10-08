@@ -436,8 +436,7 @@ func wireGrowthPushHandlers(ctx context.Context, srv *httpadapter.Server, growth
 			handler := subscribers.CompanionGrowthHandler(companionSub, derived)
 			for _, subject := range []string{
 				events.TopicAtomSessionCompleted,
-				"chora.consumption.kg.hexagon_expanded.v1",
-				"chora.consumption.kg.junction_accepted.v1",
+				events.TopicKGJunctionAccepted,
 				events.TopicDailyDoseServed,
 				subscribers.TopicSharingPostCreated,
 				subscribers.TopicSharingReactionAdded,
@@ -454,7 +453,7 @@ func wireGrowthPushHandlers(ctx context.Context, srv *httpadapter.Server, growth
 		go func() {
 			log.Printf("consumption: egg-purchase subscriber binding the payments egg-capture topics")
 			handler := subscribers.EggPurchaseHandler(eggSub)
-			for _, subject := range []string{subscribers.TopicPaymentsCompanionEggCaptured, subscribers.TopicPaymentsFamiliarEggCapturedLegacy} {
+			for _, subject := range []string{subscribers.TopicPaymentsCompanionEggCaptured} {
 				if err := bus.Subscribe(ctx, consumerConfig("chora-consumption.egg-purchase", subject), handler); err != nil && !errors.Is(err, context.Canceled) {
 					log.Printf("ERROR consumption: egg-purchase subscriber exited: %v", err)
 				}
