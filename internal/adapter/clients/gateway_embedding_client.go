@@ -30,6 +30,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -64,10 +65,9 @@ const (
 	// gatewayEmbedCrewKind classifies the caller for cost dashboards.
 	gatewayEmbedCrewKind = "companion"
 
-	// gatewayEmbedLogicalModelID pins the embedding model REQUESTED on the
-	// wire; ModelID() returns the same constant so request and stored label
-	// cannot drift apart.
-	gatewayEmbedLogicalModelID = "text-embedding-004"
+	// gatewayEmbedDefaultLogicalModelID is the default embedding model
+	// requested on the wire. Override with EMBEDDING_LOGICAL_MODEL_ID.
+	gatewayEmbedDefaultLogicalModelID = "text-embedding-004"
 
 	// gatewayEmbedOutputDimensions matches every pgvector(1024) column this
 	// service writes — the LiquidAI LFM2.5 embedding route's native width (see
@@ -87,6 +87,7 @@ type embedGRPCClient interface {
 type GatewayEmbeddingClient struct {
 	client  embedGRPCClient
 	timeout time.Duration
+	modelID string
 }
 
 // Compile-time guarantee the adapter satisfies the unchanged domain port.
@@ -105,11 +106,15 @@ func NewGatewayEmbeddingClient(target string, timeout time.Duration) (*GatewayEm
 	if timeout <= 0 {
 		timeout = gatewayEmbedDefaultTimeout
 	}
+	modelID := strings.TrimSpace(os.Getenv("EMBEDDING_LOGICAL_MODEL_ID"))
+	if modelID == "" {
+		modelID = gatewayEmbedDefaultLogicalModelID
+	}
 	conn, err := grpc.NewClient(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, fmt.Errorf("gateway_embedding_client: dial %q: %w", target, err)
 	}
-	return &GatewayEmbeddingClient{client: mgv1.NewModelGatewayServiceClient(conn), timeout: timeout}, nil
+	return &GatewayEmbeddingClient{client: mgv1.NewModelGatewayServiceClient(conn), timeout: timeout, modelID: modelID}, nil
 }
 
 // NewGatewayEmbeddingClientFromStub injects a fake gRPC client (tests).
@@ -117,14 +122,18 @@ func NewGatewayEmbeddingClientFromStub(stub embedGRPCClient, timeout time.Durati
 	if timeout <= 0 {
 		timeout = gatewayEmbedDefaultTimeout
 	}
-	return &GatewayEmbeddingClient{client: stub, timeout: timeout}
+	modelID := strings.TrimSpace(os.Getenv("EMBEDDING_LOGICAL_MODEL_ID"))
+	if modelID == "" {
+		modelID = gatewayEmbedDefaultLogicalModelID
+	}
+	return &GatewayEmbeddingClient{client: stub, timeout: timeout, modelID: modelID}
 }
 
-// ModelID reports the pinned logical embedding model, recorded beside each
+// ModelID reports the logical embedding model, recorded beside each
 // pgvector row (Server.CompanionEmbeddingModelID) for recall-compatibility
 // checks.
 func (c *GatewayEmbeddingClient) ModelID() string {
-	return gatewayEmbedLogicalModelID
+	return c.modelID
 }
 
 // Embed implements companion.Embedder over the gateway Embed RPC. The three
@@ -165,7 +174,7 @@ func (c *GatewayEmbeddingClient) Embed(ctx context.Context, in companion.EmbedIn
 		Gcid:             gcid,
 		AgentId:          gatewayEmbedAgentID,
 		CrewKind:         gatewayEmbedCrewKind,
-		LogicalModelId:   gatewayEmbedLogicalModelID,
+		LogicalModelId:   c.modelID,
 		Text:             in.Text,
 		TaskType:         taskType,
 		OutputDimensions: gatewayEmbedOutputDimensions,
