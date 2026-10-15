@@ -332,8 +332,9 @@ type Server struct {
 	CompanionMemoryRecallTopK int
 
 	// CompanionEmbeddingModelID is the embedding model identifier stamped into
-	// the persisted companion_memory_recall.model_id column (e.g.
-	// "text-embedding-004"). Derived from the embedding model resource at boot.
+	// the persisted companion_memory_recall.model_id column. Sourced from the
+	// env-provided logical embedding model id (EMBEDDING_LOGICAL_MODEL_ID) at
+	// boot; there is no literal default.
 	CompanionEmbeddingModelID string
 
 	// DefaultManaTier is the per-request mana-tier fallback used when no

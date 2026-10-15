@@ -4,8 +4,8 @@
 // (W9) can drill instantly without a per-read gRPC round-trip.
 //
 // The searcher is chora-creation's ContentRetrieval.SearchEmbeddings — the
-// edge's precomputed concept embedding is the query (same text-embedding-004
-// space creation indexes atoms in). Per ddd-enforcement the sync gRPC is
+// edge's precomputed concept embedding is the query (same embedding space
+// creation indexes atoms in). Per ddd-enforcement the sync gRPC is
 // sanctioned: deterministic, no LLM, idempotent, side-effect-free.
 //
 // GRADABILITY INVARIANT (CHO-1895): only gradable+answerable atoms (atom_index
