@@ -17,9 +17,10 @@
 //     actor; an unstamped call site is a bug named loudly by the error.
 //   - agent_id: consumption_memory_embedder (fixed adapter identity).
 //
-// The logical model is PINNED client-side ("text-embedding-004") and ModelID()
-// returns the same constant, so the label recorded beside each pgvector row
-// can never drift from what was requested, even if the gateway default moves.
+// The logical model id is read from EMBEDDING_LOGICAL_MODEL_ID at construction
+// (no literal default — a blank value fails construction loudly) and ModelID()
+// returns that same value, so the label recorded beside each pgvector row can
+// never drift from what was requested, even if the gateway default moves.
 //
 // Error contract: parity with the retired VertexEmbeddingClient, the same
 // agentengine sentinels, so every caller's soft-fail handling is untouched
@@ -52,6 +53,12 @@ import (
 // this client, so reaching this error means a wiring bug, not a config choice.
 var ErrGatewayEmbedEmptyTarget = errors.New("gateway_embedding_client: target empty (set CHORA_MODEL_GATEWAY_GRPC_URL)")
 
+// ErrGatewayEmbedEmptyModelID fails construction when EMBEDDING_LOGICAL_MODEL_ID
+// is blank. The logical model id is env-provided (never a literal default), and
+// a blank value would stamp an empty model_id beside every pgvector row, so the
+// caller must configure it.
+var ErrGatewayEmbedEmptyModelID = errors.New("gateway_embedding_client: EMBEDDING_LOGICAL_MODEL_ID empty (required; set the env var)")
+
 const (
 	// gatewayEmbedDefaultTimeout bounds one embedding round-trip. Embeds are
 	// fast single-vector calls; 10s is generous headroom over the gateway's
@@ -65,16 +72,22 @@ const (
 	// gatewayEmbedCrewKind classifies the caller for cost dashboards.
 	gatewayEmbedCrewKind = "companion"
 
-	// gatewayEmbedDefaultLogicalModelID is the default embedding model
-	// requested on the wire. Override with EMBEDDING_LOGICAL_MODEL_ID.
-	gatewayEmbedDefaultLogicalModelID = "text-embedding-004"
-
 	// gatewayEmbedOutputDimensions matches every pgvector(1024) column this
-	// service writes — the LiquidAI LFM2.5 embedding route's native width (see
-	// the registry's `text-embedding-004` entry). Sent explicitly, never left
-	// to a remote default.
+	// service writes — the configured embedding route's native width. Sent
+	// explicitly, never left to a remote default.
 	gatewayEmbedOutputDimensions = 1024
 )
+
+// embeddingModelIDFromEnv returns the configured logical embedding model id
+// (EMBEDDING_LOGICAL_MODEL_ID). It fails loud on a blank value: the id is
+// env-provided with no literal default.
+func embeddingModelIDFromEnv() (string, error) {
+	modelID := strings.TrimSpace(os.Getenv("EMBEDDING_LOGICAL_MODEL_ID"))
+	if modelID == "" {
+		return "", ErrGatewayEmbedEmptyModelID
+	}
+	return modelID, nil
+}
 
 // embedGRPCClient is the minimal slice of mgv1.ModelGatewayServiceClient the
 // adapter calls (Embed only). The generated client satisfies it; tests inject
@@ -94,8 +107,10 @@ type GatewayEmbeddingClient struct {
 var _ companion.Embedder = (*GatewayEmbeddingClient)(nil)
 
 // NewGatewayEmbeddingClient dials the gateway ModelGatewayService at the mesh
-// target. An empty target fails loud (ErrGatewayEmbedEmptyTarget); a
-// non-positive timeout falls back to gatewayEmbedDefaultTimeout.
+// target. An empty target fails loud (ErrGatewayEmbedEmptyTarget); a blank
+// EMBEDDING_LOGICAL_MODEL_ID fails loud too (ErrGatewayEmbedEmptyModelID — the
+// model id is env-provided, never a literal default); a non-positive timeout
+// falls back to gatewayEmbedDefaultTimeout.
 // grpc.NewClient is lazy, so a healthy return does not guarantee reachability;
 // the first RPC surfaces Unavailable, which callers soft-fail.
 func NewGatewayEmbeddingClient(target string, timeout time.Duration) (*GatewayEmbeddingClient, error) {
@@ -103,12 +118,12 @@ func NewGatewayEmbeddingClient(target string, timeout time.Duration) (*GatewayEm
 	if target == "" {
 		return nil, ErrGatewayEmbedEmptyTarget
 	}
+	modelID, err := embeddingModelIDFromEnv()
+	if err != nil {
+		return nil, err
+	}
 	if timeout <= 0 {
 		timeout = gatewayEmbedDefaultTimeout
-	}
-	modelID := strings.TrimSpace(os.Getenv("EMBEDDING_LOGICAL_MODEL_ID"))
-	if modelID == "" {
-		modelID = gatewayEmbedDefaultLogicalModelID
 	}
 	conn, err := grpc.NewClient(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
@@ -117,15 +132,16 @@ func NewGatewayEmbeddingClient(target string, timeout time.Duration) (*GatewayEm
 	return &GatewayEmbeddingClient{client: mgv1.NewModelGatewayServiceClient(conn), timeout: timeout, modelID: modelID}, nil
 }
 
-// NewGatewayEmbeddingClientFromStub injects a fake gRPC client (tests).
+// NewGatewayEmbeddingClientFromStub injects a fake gRPC client (tests). The
+// logical model id is read from EMBEDDING_LOGICAL_MODEL_ID exactly as the
+// production constructor does — set it via t.Setenv; there is no literal
+// default. A blank value is tolerated only here: this seam never leaves a test,
+// and NewGatewayEmbeddingClient is the fail-loud production path.
 func NewGatewayEmbeddingClientFromStub(stub embedGRPCClient, timeout time.Duration) *GatewayEmbeddingClient {
 	if timeout <= 0 {
 		timeout = gatewayEmbedDefaultTimeout
 	}
-	modelID := strings.TrimSpace(os.Getenv("EMBEDDING_LOGICAL_MODEL_ID"))
-	if modelID == "" {
-		modelID = gatewayEmbedDefaultLogicalModelID
-	}
+	modelID, _ := embeddingModelIDFromEnv()
 	return &GatewayEmbeddingClient{client: stub, timeout: timeout, modelID: modelID}
 }
 

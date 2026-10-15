@@ -16,6 +16,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"os"
 	"strconv"
@@ -57,6 +58,12 @@ func wireCompanionMemory(_ context.Context, srv *httpadapter.Server, pool *pgxpo
 	}
 	embedder, err := clients.NewGatewayEmbeddingClient(target, 0)
 	if err != nil {
+		if errors.Is(err, clients.ErrGatewayEmbedEmptyModelID) {
+			// The gateway URL is set, so embeddings are wanted; a missing logical
+			// model id is a misconfiguration, not an optional-feature-off. Refuse
+			// to boot rather than silently stamp an empty model_id on every row.
+			log.Fatalf("consumption: CHORA_MODEL_GATEWAY_GRPC_URL is set but EMBEDDING_LOGICAL_MODEL_ID is unset. Refusing to boot (fail-loud; no default model).")
+		}
 		log.Printf("consumption: gateway embedding client failed: %v, F4 memory DISABLED", err)
 		return
 	}

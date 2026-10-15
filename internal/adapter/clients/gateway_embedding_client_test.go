@@ -45,8 +45,22 @@ func okEmbedResponse() *mgv1.EmbedResponse {
 		InvocationId: "0198f000-0000-7000-8000-000000000001",
 		Values:       []float32{0.25, -0.5, 0.75},
 		Vendor:       "vertex_ai_gemini",
-		ModelVersion: "text-embedding-004",
+		ModelVersion: "embedding-model-version",
 	}
+}
+
+// configuredEmbeddingModelID is the logical model id the tests configure via
+// EMBEDDING_LOGICAL_MODEL_ID. It is deliberately not a vendor model name: the id
+// is env-provided in production, so the tests assert the CONFIGURED value — not a
+// literal — is what reaches the wire.
+const configuredEmbeddingModelID = "embedding-model-configured"
+
+// newStubClient builds a client over the fake gRPC seam with the configured
+// logical model id set the way production reads it (EMBEDDING_LOGICAL_MODEL_ID).
+func newStubClient(t *testing.T, fake embedGRPCClient) *GatewayEmbeddingClient {
+	t.Helper()
+	t.Setenv("EMBEDDING_LOGICAL_MODEL_ID", configuredEmbeddingModelID)
+	return NewGatewayEmbeddingClientFromStub(fake, 0)
 }
 
 // stampedCtx carries the values a real chat-handler call site stamps before
@@ -61,7 +75,7 @@ func stampedCtx(t *testing.T) context.Context {
 
 func TestGatewayEmbeddingClient_SendsWireCompleteRequest(t *testing.T) {
 	fake := &fakeEmbedGRPC{resp: okEmbedResponse()}
-	c := NewGatewayEmbeddingClientFromStub(fake, 0)
+	c := newStubClient(t, fake)
 
 	got, err := c.Embed(stampedCtx(t), companion.EmbedInput{
 		Text:     "the learner asked about fractions",
@@ -97,8 +111,8 @@ func TestGatewayEmbeddingClient_SendsWireCompleteRequest(t *testing.T) {
 	if req.GetTaskType() != "RETRIEVAL_QUERY" {
 		t.Errorf("task_type = %q (passthrough broken)", req.GetTaskType())
 	}
-	if req.GetLogicalModelId() != "text-embedding-004" {
-		t.Errorf("logical_model_id = %q (must be pinned, not empty)", req.GetLogicalModelId())
+	if req.GetLogicalModelId() != configuredEmbeddingModelID {
+		t.Errorf("logical_model_id = %q; want the configured %q (must not be empty)", req.GetLogicalModelId(), configuredEmbeddingModelID)
 	}
 	if req.GetOutputDimensions() != 1024 {
 		t.Errorf("output_dimensions = %d (must match the vector(1024) columns)", req.GetOutputDimensions())
@@ -113,7 +127,7 @@ func TestGatewayEmbeddingClient_SendsWireCompleteRequest(t *testing.T) {
 
 func TestGatewayEmbeddingClient_EmptyTaskTypeDefaultsToDocumentClientSide(t *testing.T) {
 	fake := &fakeEmbedGRPC{resp: okEmbedResponse()}
-	c := NewGatewayEmbeddingClientFromStub(fake, 0)
+	c := newStubClient(t, fake)
 
 	if _, err := c.Embed(stampedCtx(t), companion.EmbedInput{
 		Text:     "stored memory turn",
@@ -130,7 +144,7 @@ func TestGatewayEmbeddingClient_EmptyTaskTypeDefaultsToDocumentClientSide(t *tes
 
 func TestGatewayEmbeddingClient_TenantFallsBackToContext(t *testing.T) {
 	fake := &fakeEmbedGRPC{resp: okEmbedResponse()}
-	c := NewGatewayEmbeddingClientFromStub(fake, 0)
+	c := newStubClient(t, fake)
 
 	if _, err := c.Embed(stampedCtx(t), companion.EmbedInput{Text: "hello"}); err != nil {
 		t.Fatalf("Embed: %v", err)
@@ -142,7 +156,7 @@ func TestGatewayEmbeddingClient_TenantFallsBackToContext(t *testing.T) {
 
 func TestGatewayEmbeddingClient_RefusesEmptyText(t *testing.T) {
 	fake := &fakeEmbedGRPC{resp: okEmbedResponse()}
-	c := NewGatewayEmbeddingClientFromStub(fake, 0)
+	c := newStubClient(t, fake)
 
 	_, err := c.Embed(stampedCtx(t), companion.EmbedInput{Text: "   "})
 	if err == nil {
@@ -161,7 +175,7 @@ func TestGatewayEmbeddingClient_RefusesEmptyText(t *testing.T) {
 
 func TestGatewayEmbeddingClient_RefusesMissingGCID(t *testing.T) {
 	fake := &fakeEmbedGRPC{resp: okEmbedResponse()}
-	c := NewGatewayEmbeddingClientFromStub(fake, 0)
+	c := newStubClient(t, fake)
 
 	// Tenant present, gcid deliberately NOT stamped: the gateway would refuse
 	// this request, so the adapter refuses first, loudly, without fabricating
@@ -184,7 +198,7 @@ func TestGatewayEmbeddingClient_RefusesMissingGCID(t *testing.T) {
 
 func TestGatewayEmbeddingClient_RefusesMissingTenant(t *testing.T) {
 	fake := &fakeEmbedGRPC{resp: okEmbedResponse()}
-	c := NewGatewayEmbeddingClientFromStub(fake, 0)
+	c := newStubClient(t, fake)
 
 	// gcid stamped, tenant absent from BOTH the input and the ctx.
 	ctx := tracing.WithGCID(context.Background(), "0198bbbb-0000-7000-8000-0000000000bb")
@@ -216,7 +230,7 @@ func TestGatewayEmbeddingClient_MapsRPCErrorsToEngineSentinels(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			fake := &fakeEmbedGRPC{err: tc.rpc}
-			c := NewGatewayEmbeddingClientFromStub(fake, 0)
+			c := newStubClient(t, fake)
 			_, err := c.Embed(stampedCtx(t), companion.EmbedInput{
 				Text:     "hello",
 				TenantID: "0198aaaa-0000-7000-8000-0000000000aa",
@@ -233,7 +247,7 @@ func TestGatewayEmbeddingClient_MapsRPCErrorsToEngineSentinels(t *testing.T) {
 
 func TestGatewayEmbeddingClient_EmptyValuesIsLoud(t *testing.T) {
 	fake := &fakeEmbedGRPC{resp: &mgv1.EmbedResponse{InvocationId: "x", Values: nil}}
-	c := NewGatewayEmbeddingClientFromStub(fake, 0)
+	c := newStubClient(t, fake)
 
 	_, err := c.Embed(stampedCtx(t), companion.EmbedInput{
 		Text:     "hello",
@@ -249,7 +263,7 @@ func TestGatewayEmbeddingClient_EmptyValuesIsLoud(t *testing.T) {
 
 func TestGatewayEmbeddingClient_NilResponseIsLoud(t *testing.T) {
 	fake := &fakeEmbedGRPC{resp: nil}
-	c := NewGatewayEmbeddingClientFromStub(fake, 0)
+	c := newStubClient(t, fake)
 
 	_, err := c.Embed(stampedCtx(t), companion.EmbedInput{
 		Text:     "hello",
@@ -263,10 +277,10 @@ func TestGatewayEmbeddingClient_NilResponseIsLoud(t *testing.T) {
 	}
 }
 
-func TestGatewayEmbeddingClient_ModelIDIsPinnedConstant(t *testing.T) {
-	c := NewGatewayEmbeddingClientFromStub(&fakeEmbedGRPC{resp: okEmbedResponse()}, 0)
-	if got := c.ModelID(); got != "text-embedding-004" {
-		t.Fatalf("ModelID() = %q", got)
+func TestGatewayEmbeddingClient_ModelIDComesFromEnv(t *testing.T) {
+	c := newStubClient(t, &fakeEmbedGRPC{resp: okEmbedResponse()})
+	if got := c.ModelID(); got != configuredEmbeddingModelID {
+		t.Fatalf("ModelID() = %q; want the configured %q", got, configuredEmbeddingModelID)
 	}
 }
 
@@ -274,6 +288,20 @@ func TestNewGatewayEmbeddingClient_EmptyTargetFailsLoud(t *testing.T) {
 	if _, err := NewGatewayEmbeddingClient("  ", 0); err == nil {
 		t.Fatal("expected constructor error on empty target")
 	} else if !strings.Contains(err.Error(), "CHORA_MODEL_GATEWAY_GRPC_URL") {
+		t.Fatalf("error must name the env var to set: %v", err)
+	}
+}
+
+func TestNewGatewayEmbeddingClient_EmptyModelIDFailsLoud(t *testing.T) {
+	t.Setenv("EMBEDDING_LOGICAL_MODEL_ID", "")
+	_, err := NewGatewayEmbeddingClient("model-gateway:9090", 0)
+	if err == nil {
+		t.Fatal("expected constructor error on blank EMBEDDING_LOGICAL_MODEL_ID")
+	}
+	if !errors.Is(err, ErrGatewayEmbedEmptyModelID) {
+		t.Fatalf("want ErrGatewayEmbedEmptyModelID, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "EMBEDDING_LOGICAL_MODEL_ID") {
 		t.Fatalf("error must name the env var to set: %v", err)
 	}
 }
