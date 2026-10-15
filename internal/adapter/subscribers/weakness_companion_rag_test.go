@@ -17,6 +17,12 @@ import (
 
 var errTest = errors.New("subscribers: test error")
 
+// testEmbeddingModelID is the logical embedding model id the tests configure. It
+// is deliberately not a vendor model name: the id is env-provided in production
+// (EMBEDDING_LOGICAL_MODEL_ID), so the hook test asserts the CONFIGURED value is
+// what gets stamped on the recorded memory.
+const testEmbeddingModelID = "embedding-model-configured"
+
 // --- fakes for the Companion-RAG ports ---
 
 type fakeCompanionResolver struct {
@@ -65,7 +71,7 @@ func TestCompanionRAGHook_RecordsDiagnosisIntoCompanionMemory(t *testing.T) {
 	res := &fakeCompanionResolver{id: "fam-1"}
 	emb := &fakeCompanionEmbedder{vec: []float32{0.1, 0.2}}
 	mem := &fakeCompanionMemory{}
-	hook := NewCompanionRAGHook(res, emb, mem, "text-embedding-004", fixedClock())
+	hook := NewCompanionRAGHook(res, emb, mem, testEmbeddingModelID, fixedClock())
 
 	if err := hook(context.Background(), lwPayload()); err != nil {
 		t.Fatalf("hook: %v", err)
@@ -90,7 +96,7 @@ func TestCompanionRAGHook_RecordsDiagnosisIntoCompanionMemory(t *testing.T) {
 	if rec.SourceSessionID != "weakness:upl-1" {
 		t.Errorf("provenance source = %q, want weakness:upl-1", rec.SourceSessionID)
 	}
-	if len(rec.Embedding) != 2 || rec.ModelID != "text-embedding-004" {
+	if len(rec.Embedding) != 2 || rec.ModelID != testEmbeddingModelID {
 		t.Errorf("embedding/model not threaded: %+v", rec)
 	}
 }

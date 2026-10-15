@@ -46,7 +46,7 @@ func TestCompanionMemoryRepo_Record_BindsDurableProvenanceJSON(t *testing.T) {
 		MemoryType:  "research",
 		ContentText: "NASA and NOAA agree the Earth is an oblate spheroid.",
 		Embedding:   sampleEmbedding(),
-		ModelID:     "text-embedding-004",
+		ModelID:     testEmbeddingModelID,
 		Now:         time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC),
 		Provenance:  groundedProvenanceFixture(),
 	})
@@ -106,7 +106,7 @@ func TestCompanionMemoryRepo_Record_NonGroundedNoteBindsNullProvenance(t *testin
 		MemoryType:  "recap",
 		ContentText: "You covered fractions today.",
 		Embedding:   sampleEmbedding(),
-		ModelID:     "text-embedding-004",
+		ModelID:     testEmbeddingModelID,
 		Now:         time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC),
 		// Provenance deliberately nil — a recap is not grounded.
 	})

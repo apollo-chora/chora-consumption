@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -17,6 +18,22 @@ import (
 	"github.com/apollo-chora/chora-consumption/internal/adapter/clients"
 	"github.com/apollo-chora/chora-consumption/internal/domain/companion"
 )
+
+// testEmbeddingModelID is the logical embedding model id the tests configure. It
+// is deliberately not a vendor model name: production reads the id from
+// EMBEDDING_LOGICAL_MODEL_ID (memory_wiring.go copies it onto
+// Server.CompanionEmbeddingModelID), so tests assert the CONFIGURED id — not a
+// literal — is what gets stamped on each memory row.
+const testEmbeddingModelID = "embedding-model-configured"
+
+// stampCompanionEmbeddingModelID sets EMBEDDING_LOGICAL_MODEL_ID and stamps the
+// Server the way boot does, returning the configured id for assertions.
+func stampCompanionEmbeddingModelID(t *testing.T, srv *Server) string {
+	t.Helper()
+	t.Setenv("EMBEDDING_LOGICAL_MODEL_ID", testEmbeddingModelID)
+	srv.CompanionEmbeddingModelID = os.Getenv("EMBEDDING_LOGICAL_MODEL_ID")
+	return testEmbeddingModelID
+}
 
 // fakeEmbedder records inputs and returns a canned vector (or error).
 type fakeEmbedder struct {
@@ -95,7 +112,7 @@ func TestCompanionChat_Memory_RecallInjected_AndRecorded(t *testing.T) {
 	}}}
 	srv.Embedder = emb
 	srv.CompanionMemory = mem
-	srv.CompanionEmbeddingModelID = "text-embedding-004"
+	modelID := stampCompanionEmbeddingModelID(t, srv)
 
 	w := authedChatReq(t, srv, "/v1/me/companions/"+companionTestID+"/chat", map[string]string{
 		"message": "what did I say I love?",
@@ -120,8 +137,8 @@ func TestCompanionChat_Memory_RecallInjected_AndRecorded(t *testing.T) {
 	if !strings.Contains(rec.ContentText, "what did I say I love?") || !strings.Contains(rec.ContentText, "Hello again!") {
 		t.Errorf("recorded ContentText = %q; want both message and reply", rec.ContentText)
 	}
-	if rec.ModelID != "text-embedding-004" {
-		t.Errorf("recorded ModelID = %q; want text-embedding-004", rec.ModelID)
+	if rec.ModelID != modelID {
+		t.Errorf("recorded ModelID = %q; want the configured %q", rec.ModelID, modelID)
 	}
 	if rec.CompanionID != companionTestID {
 		t.Errorf("recorded CompanionID = %q; want %q", rec.CompanionID, companionTestID)

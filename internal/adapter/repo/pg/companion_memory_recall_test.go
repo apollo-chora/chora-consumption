@@ -130,6 +130,12 @@ func (r *memStubTxRunner) RunInTx(ctx context.Context, fn func(ctx context.Conte
 
 const memCompanionID = "01970000-0000-7000-a000-000000000001"
 
+// testEmbeddingModelID is the logical embedding model id the tests bind. It is
+// deliberately not a vendor model name: production sources it from
+// EMBEDDING_LOGICAL_MODEL_ID, so these adapter tests only assert the value the
+// caller passes is what the INSERT binds.
+const testEmbeddingModelID = "embedding-model-configured"
+
 // memPurgeOwnerGCID is the learner whose tenant/gcid context the retire-time
 // purge runs under (the retire handler builds exactly this via repoCtx).
 const memPurgeOwnerGCID = "01970000-0000-7000-b000-000000000002"
@@ -152,7 +158,7 @@ func TestCompanionMemoryRepo_Record_AppliesRLS_AndBuildsInsert(t *testing.T) {
 		CompanionID: memCompanionID,
 		ContentText: "the mitochondria is the powerhouse of the cell",
 		Embedding:   sampleEmbedding(),
-		ModelID:     "text-embedding-004",
+		ModelID:     testEmbeddingModelID,
 		Now:         time.Date(2026, 6, 2, 12, 0, 0, 0, time.UTC),
 	})
 	if err != nil {

@@ -65,7 +65,7 @@ func wireMemChat(t *testing.T, rows []companion.MemoryRow) (*Server, *fakeChatEn
 	srv := newMemChatServer(t, engine)
 	srv.Embedder = &fakeEmbedder{vec: []float32{0.1, 0.2, 0.3}}
 	srv.CompanionMemory = &fakeCompanionMemory{recall: rows}
-	srv.CompanionEmbeddingModelID = "text-embedding-004"
+	stampCompanionEmbeddingModelID(t, srv)
 	return srv, engine
 }
 

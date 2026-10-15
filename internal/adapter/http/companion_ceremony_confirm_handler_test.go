@@ -75,7 +75,7 @@ func seedConfirmServer(t *testing.T) (*Server, string, *fakeCompanionMemory, *ev
 	srv.Embedder = &fakeEmbedder{vec: []float32{1, 0}}
 	mem := &fakeCompanionMemory{}
 	srv.CompanionMemory = mem
-	srv.CompanionEmbeddingModelID = "text-embedding-004"
+	stampCompanionEmbeddingModelID(t, srv)
 	pub := events.NewInMemoryPublisher()
 	srv.Publisher = pub
 	return srv, id, mem, pub
@@ -324,8 +324,8 @@ func TestCeremonyConfirm_MixedTicks(t *testing.T) {
 	if note.TenantID != testTenant || note.OwnerGCID != testGCID || note.CompanionID != id {
 		t.Errorf("note identity = %s/%s/%s", note.TenantID, note.OwnerGCID, note.CompanionID)
 	}
-	if note.ModelID != "text-embedding-004" {
-		t.Errorf("note model_id = %q", note.ModelID)
+	if note.ModelID != testEmbeddingModelID {
+		t.Errorf("note model_id = %q; want the configured %q", note.ModelID, testEmbeddingModelID)
 	}
 	for _, want := range []string{"Tail calls", "Flood risk engineering", "explore"} {
 		if !strings.Contains(note.ContentText, want) {
