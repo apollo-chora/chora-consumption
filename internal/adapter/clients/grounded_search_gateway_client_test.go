@@ -1,9 +1,9 @@
 // grounded_search_gateway_client_test.go — P5 Far Sight (CHO-2017, ADR-231 D7):
 // the REAL consumption→gateway GroundedSearch adapter that replaces the P5
 // nil-seam. These pin the wire mapping the Seeker builders depend on: the
-// domain grounded.Query → mgv1.GroundedSearchRequest (caller identity, the
+// domain grounded.Query → gatewayv1.GroundedSearchRequest (caller identity, the
 // external_egress action_code, a per-call UUIDv7 idempotency key, the W3C
-// traceparent) and the mgv1.GroundedSearchResponse citations → grounded.Hit
+// traceparent) and the gatewayv1.GroundedSearchResponse citations → grounded.Hit
 // (uri/title/snippet/domain, ADR-231 D4). The citation mandate/hedge/fence stay
 // caller-side (the Seeker router) against the returned Result — untested here.
 package clients
@@ -16,7 +16,7 @@ import (
 
 	"google.golang.org/grpc"
 
-	mgv1 "github.com/apollo-chora/chora-contracts/gen/go/chora/services/model_gateway/v1"
+	gatewayv1 "github.com/apollo-chora/chora-consumption/internal/adapter/clients/gatewayv1"
 
 	"github.com/apollo-chora/chora-consumption/internal/domain/companion/grounded"
 )
@@ -28,13 +28,13 @@ const testGroundedActionCode = "companion_skill_fact_check"
 
 // fakeGroundedGRPC captures the outgoing request + returns a canned response.
 type fakeGroundedGRPC struct {
-	resp  *mgv1.GroundedSearchResponse
+	resp  *gatewayv1.GroundedSearchResponse
 	err   error
-	got   *mgv1.GroundedSearchRequest
+	got   *gatewayv1.GroundedSearchRequest
 	calls int
 }
 
-func (f *fakeGroundedGRPC) GroundedSearch(_ context.Context, in *mgv1.GroundedSearchRequest, _ ...grpc.CallOption) (*mgv1.GroundedSearchResponse, error) {
+func (f *fakeGroundedGRPC) GroundedSearch(_ context.Context, in *gatewayv1.GroundedSearchRequest, _ ...grpc.CallOption) (*gatewayv1.GroundedSearchResponse, error) {
 	f.calls++
 	f.got = in
 	if f.err != nil {
@@ -43,9 +43,9 @@ func (f *fakeGroundedGRPC) GroundedSearch(_ context.Context, in *mgv1.GroundedSe
 	return f.resp, nil
 }
 
-func twoCitationResp() *mgv1.GroundedSearchResponse {
-	return &mgv1.GroundedSearchResponse{
-		Citations: []*mgv1.GroundedCitation{
+func twoCitationResp() *gatewayv1.GroundedSearchResponse {
+	return &gatewayv1.GroundedSearchResponse{
+		Citations: []*gatewayv1.GroundedCitation{
 			{Uri: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/aaa", Title: "Earth is an oblate spheroid", Domain: "nasa.gov", Snippet: "Measurements confirm a near-spherical planet."},
 			{Uri: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/bbb", Title: "Shape of the Earth", Domain: "noaa.gov", Snippet: "Satellite geodesy."},
 		},
@@ -201,7 +201,7 @@ func TestGroundedSearch_RPCErrorPropagatesLoud(t *testing.T) {
 func TestGroundedSearch_EmptyCitationsIsEmptyResult(t *testing.T) {
 	// A zero-citation grounded search (the honest empty state) maps to an empty
 	// Result — the caller's citation mandate then hedges (never a nil-panic).
-	fake := &fakeGroundedGRPC{resp: &mgv1.GroundedSearchResponse{Citations: nil}}
+	fake := &fakeGroundedGRPC{resp: &gatewayv1.GroundedSearchResponse{Citations: nil}}
 	c := NewGroundedSearchGatewayClientFromStub(fake, time.Second)
 
 	res, err := c.SearchGround(context.Background(), okQuery())

@@ -10,17 +10,14 @@
 // mesh Service from env CHORA_MODEL_GATEWAY_GRPC_URL (the sidecar does mTLS),
 // grpc.NewClient lazy dial, a minimal private client seam for tests.
 //
-// Identity on the wire (all REQUIRED by the gateway, refused loud here first):
-//   - tenant_id: EmbedInput.TenantID, falling back to the shared tracing ctx
-//     key (tracing.WithTenantID stamps it at every handler entry).
-//   - gcid: tracing.GCIDFromContext(ctx) ONLY. The adapter never fabricates an
-//     actor; an unstamped call site is a bug named loudly by the error.
-//   - agent_id: consumption_memory_embedder (fixed adapter identity).
+// No model ID is sent. The gateway resolves the embeddings operation from the
+// RPC method and serves it from that operation's own configured routes, so the
+// caller no longer names a model and EMBEDDING_LOGICAL_MODEL_ID is gone. The
+// model that actually answered is recorded from the response.
 //
-// The logical model id is read from EMBEDDING_LOGICAL_MODEL_ID at construction
-// (no literal default — a blank value fails construction loudly) and ModelID()
-// returns that same value, so the label recorded beside each pgvector row can
-// never drift from what was requested, even if the gateway default moves.
+// The gateway's EmbedRequest claims no tenant, gcid or agent — the credential
+// is the tenant — so none are sent. The caller still validates tenant + gcid
+// locally, because the ledger row it writes is attributed to the learner.
 //
 // Error contract: parity with the retired VertexEmbeddingClient, the same
 // agentengine sentinels, so every caller's soft-fail handling is untouched
@@ -29,22 +26,25 @@ package clients
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
+	"math"
 	"strings"
+	"sync"
 	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 
-	mgv1 "github.com/apollo-chora/chora-contracts/gen/go/chora/services/model_gateway/v1"
+	gatewayv1 "github.com/apollo-chora/chora-consumption/internal/adapter/clients/gatewayv1"
 
 	"github.com/apollo-chora/chora-common/agentengine"
 	"github.com/apollo-chora/chora-common/tracing"
-	"github.com/apollo-chora/chora-consumption/internal/domain"
 	"github.com/apollo-chora/chora-consumption/internal/domain/companion"
 )
 
@@ -52,12 +52,6 @@ import (
 // Boot wiring treats an unset URL as "F4 memory disabled" BEFORE constructing
 // this client, so reaching this error means a wiring bug, not a config choice.
 var ErrGatewayEmbedEmptyTarget = errors.New("gateway_embedding_client: target empty (set CHORA_MODEL_GATEWAY_GRPC_URL)")
-
-// ErrGatewayEmbedEmptyModelID fails construction when EMBEDDING_LOGICAL_MODEL_ID
-// is blank. The logical model id is env-provided (never a literal default), and
-// a blank value would stamp an empty model_id beside every pgvector row, so the
-// caller must configure it.
-var ErrGatewayEmbedEmptyModelID = errors.New("gateway_embedding_client: EMBEDDING_LOGICAL_MODEL_ID empty (required; set the env var)")
 
 const (
 	// gatewayEmbedDefaultTimeout bounds one embedding round-trip. Embeds are
@@ -78,49 +72,37 @@ const (
 	gatewayEmbedOutputDimensions = 1024
 )
 
-// embeddingModelIDFromEnv returns the configured logical embedding model id
-// (EMBEDDING_LOGICAL_MODEL_ID). It fails loud on a blank value: the id is
-// env-provided with no literal default.
-func embeddingModelIDFromEnv() (string, error) {
-	modelID := strings.TrimSpace(os.Getenv("EMBEDDING_LOGICAL_MODEL_ID"))
-	if modelID == "" {
-		return "", ErrGatewayEmbedEmptyModelID
-	}
-	return modelID, nil
-}
-
-// embedGRPCClient is the minimal slice of mgv1.ModelGatewayServiceClient the
+// embedGRPCClient is the minimal slice of gatewayv1.ModelGatewayServiceClient the
 // adapter calls (Embed only). The generated client satisfies it; tests inject
 // a fake.
 type embedGRPCClient interface {
-	Embed(ctx context.Context, in *mgv1.EmbedRequest, opts ...grpc.CallOption) (*mgv1.EmbedResponse, error)
+	Embed(ctx context.Context, in *gatewayv1.EmbedRequest, opts ...grpc.CallOption) (*gatewayv1.EmbedResponse, error)
 }
 
 // GatewayEmbeddingClient is the production companion.Embedder implementation.
 type GatewayEmbeddingClient struct {
 	client  embedGRPCClient
 	timeout time.Duration
-	modelID string
+
+	// lastModel is the upstream model that answered the most recent Embed.
+	// The gateway resolves which model serves the operation, so the caller
+	// cannot know it before a call.
+	mu        sync.Mutex
+	lastModel string
 }
 
 // Compile-time guarantee the adapter satisfies the unchanged domain port.
 var _ companion.Embedder = (*GatewayEmbeddingClient)(nil)
 
 // NewGatewayEmbeddingClient dials the gateway ModelGatewayService at the mesh
-// target. An empty target fails loud (ErrGatewayEmbedEmptyTarget); a blank
-// EMBEDDING_LOGICAL_MODEL_ID fails loud too (ErrGatewayEmbedEmptyModelID — the
-// model id is env-provided, never a literal default); a non-positive timeout
-// falls back to gatewayEmbedDefaultTimeout.
+// target. An empty target fails loud (ErrGatewayEmbedEmptyTarget); a
+// non-positive timeout falls back to gatewayEmbedDefaultTimeout.
 // grpc.NewClient is lazy, so a healthy return does not guarantee reachability;
 // the first RPC surfaces Unavailable, which callers soft-fail.
 func NewGatewayEmbeddingClient(target string, timeout time.Duration) (*GatewayEmbeddingClient, error) {
 	target = strings.TrimSpace(target)
 	if target == "" {
 		return nil, ErrGatewayEmbedEmptyTarget
-	}
-	modelID, err := embeddingModelIDFromEnv()
-	if err != nil {
-		return nil, err
 	}
 	if timeout <= 0 {
 		timeout = gatewayEmbedDefaultTimeout
@@ -129,27 +111,33 @@ func NewGatewayEmbeddingClient(target string, timeout time.Duration) (*GatewayEm
 	if err != nil {
 		return nil, fmt.Errorf("gateway_embedding_client: dial %q: %w", target, err)
 	}
-	return &GatewayEmbeddingClient{client: mgv1.NewModelGatewayServiceClient(conn), timeout: timeout, modelID: modelID}, nil
+	return &GatewayEmbeddingClient{client: gatewayv1.NewModelGatewayServiceClient(conn), timeout: timeout}, nil
 }
 
-// NewGatewayEmbeddingClientFromStub injects a fake gRPC client (tests). The
-// logical model id is read from EMBEDDING_LOGICAL_MODEL_ID exactly as the
-// production constructor does — set it via t.Setenv; there is no literal
-// default. A blank value is tolerated only here: this seam never leaves a test,
-// and NewGatewayEmbeddingClient is the fail-loud production path.
+// NewGatewayEmbeddingClientFromStub injects a fake gRPC client (tests).
 func NewGatewayEmbeddingClientFromStub(stub embedGRPCClient, timeout time.Duration) *GatewayEmbeddingClient {
 	if timeout <= 0 {
 		timeout = gatewayEmbedDefaultTimeout
 	}
-	modelID, _ := embeddingModelIDFromEnv()
-	return &GatewayEmbeddingClient{client: stub, timeout: timeout, modelID: modelID}
+	return &GatewayEmbeddingClient{client: stub, timeout: timeout}
 }
 
-// ModelID reports the logical embedding model, recorded beside each
-// pgvector row (Server.CompanionEmbeddingModelID) for recall-compatibility
-// checks.
+// ModelID reports the embedding model recorded beside each pgvector row
+// (Server.CompanionEmbeddingModelID) for recall-compatibility checks.
+//
+// It is the upstream model that answered the most recent Embed, and is empty
+// until the first one: the gateway resolves which model serves the operation,
+// so there is no caller-side value to report before a call has been made.
 func (c *GatewayEmbeddingClient) ModelID() string {
-	return c.modelID
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.lastModel
+}
+
+func (c *GatewayEmbeddingClient) recordModel(model string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.lastModel = model
 }
 
 // Embed implements companion.Embedder over the gateway Embed RPC. The three
@@ -184,25 +172,96 @@ func (c *GatewayEmbeddingClient) Embed(ctx context.Context, in companion.EmbedIn
 	callCtx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
-	resp, err := c.client.Embed(callCtx, &mgv1.EmbedRequest{
-		InvocationId:     domain.NewUUIDv7(),
-		TenantId:         tenantID,
-		Gcid:             gcid,
-		AgentId:          gatewayEmbedAgentID,
-		CrewKind:         gatewayEmbedCrewKind,
-		LogicalModelId:   c.modelID,
-		Text:             in.Text,
-		TaskType:         taskType,
-		OutputDimensions: gatewayEmbedOutputDimensions,
-		Traceparent:      TraceparentFromContext(ctx),
+	resp, err := c.client.Embed(withTraceparent(callCtx), &gatewayv1.EmbedRequest{
+		Input:      []string{in.Text},
+		Dimensions: proto.Int32(gatewayEmbedOutputDimensions),
+		// The gateway's EmbedRequest claims no tenant, gcid or agent — the
+		// credential is the tenant — so none are sent. The learner's gcid
+		// rides in `user`, the one identity-shaped field the request has.
+		User: gcid,
+		// crew_kind and task_type have no EmbedRequest field; both are ledger
+		// bookkeeping rather than routing inputs.
+		MetadataJson: mustJSON(map[string]string{
+			"crew_kind": gatewayEmbedCrewKind,
+			"task_type": taskType,
+		}),
 	})
 	if err != nil {
 		return nil, mapEmbedRPCError(err)
 	}
-	if resp == nil || len(resp.GetValues()) == 0 {
-		return nil, fmt.Errorf("%w: empty embedding response from gateway", agentengine.ErrStreamAborted)
+	vec, model, err := firstVector(resp)
+	if err != nil {
+		return nil, err
 	}
-	return resp.GetValues(), nil
+	c.recordModel(model)
+	return vec, nil
+}
+
+// firstVector returns the response's vector for input index 0, converted to
+// float32 — the protobuf field is float64, the companion port is float32.
+//
+// Every pgvector column this service writes is vector(1024), so a vector of
+// the wrong width is refused here rather than reaching the write path. A
+// missing or blank upstream model is refused too: stamping a vector with no
+// model name would make the label a lie about what produced it.
+func firstVector(resp *gatewayv1.EmbedResponse) ([]float32, string, error) {
+	if resp == nil {
+		return nil, "", fmt.Errorf("%w: empty embedding response from gateway", agentengine.ErrStreamAborted)
+	}
+	model := strings.TrimSpace(resp.GetUpstreamModel())
+	if model == "" {
+		return nil, "", fmt.Errorf("%w: gateway did not report which model answered", agentengine.ErrStreamAborted)
+	}
+	data := resp.GetData()
+	if len(data) == 0 {
+		return nil, "", fmt.Errorf("%w: empty embedding response from gateway", agentengine.ErrStreamAborted)
+	}
+	// The gateway places each vector at the index the caller's input holds, so
+	// index 0 is the single text this call sent.
+	if data[0].GetIndex() != 0 {
+		return nil, "", fmt.Errorf("%w: gateway returned a vector for input index %d, want 0", agentengine.ErrStreamAborted, data[0].GetIndex())
+	}
+	src := data[0].GetEmbedding()
+	if len(src) != gatewayEmbedOutputDimensions {
+		return nil, "", fmt.Errorf("%w: gateway returned %d dimensions, want %d", agentengine.ErrStreamAborted, len(src), gatewayEmbedOutputDimensions)
+	}
+	out := make([]float32, len(src))
+	for i, v := range src {
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return nil, "", fmt.Errorf("%w: gateway returned a non-finite embedding value at %d", agentengine.ErrStreamAborted, i)
+		}
+		out[i] = float32(v)
+	}
+	return out, model, nil
+}
+
+// withTraceparent moves the traceparent onto the gRPC metadata. The gateway's
+// Embed RPC has no traceparent field; trace context travels as the
+// `traceparent` metadata key, which is where the OTel interceptor reads it.
+//
+// AppendToOutgoingContext appends rather than replaces, so an existing value is
+// left alone rather than sent twice, and an empty value is never emitted —
+// empty trace metadata is worse than none.
+func withTraceparent(ctx context.Context) context.Context {
+	if md, ok := metadata.FromOutgoingContext(ctx); ok && len(md.Get("traceparent")) > 0 {
+		return ctx
+	}
+	traceparent := strings.TrimSpace(TraceparentFromContext(ctx))
+	if traceparent == "" {
+		return ctx
+	}
+	return metadata.AppendToOutgoingContext(ctx, "traceparent", traceparent)
+}
+
+// mustJSON marshals caller bookkeeping into the metadata_json payload. It
+// panics on failure: the input is a fixed map of strings, so a failure would be
+// a programming error rather than a condition to handle.
+func mustJSON(v any) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(fmt.Sprintf("clients: marshal metadata: %v", err))
+	}
+	return b
 }
 
 // mapEmbedRPCError translates gRPC status codes onto the canonical agentengine
