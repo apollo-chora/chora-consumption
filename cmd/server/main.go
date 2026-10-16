@@ -814,7 +814,7 @@ func main() {
 			)))
 		}
 		if srv.CompanionMemory != nil && srv.Embedder != nil {
-			growthOpts = append(growthOpts, grpcadapter.WithCompanionMemoryNote(srv.CompanionMemory, srv.Embedder, srv.CompanionEmbeddingModelID))
+			growthOpts = append(growthOpts, grpcadapter.WithCompanionMemoryNote(srv.CompanionMemory, srv.Embedder))
 		}
 		growthSrv := grpcadapter.NewCompanionGrowthServer(
 			outerGrowthSvc,

@@ -14,9 +14,9 @@ type fakeCompanionEmbedder struct {
 	err    error
 }
 
-func (f *fakeCompanionEmbedder) Embed(_ context.Context, in companion.EmbedInput) ([]float32, error) {
+func (f *fakeCompanionEmbedder) Embed(_ context.Context, in companion.EmbedInput) ([]float32, string, error) {
 	f.lastIn = in
-	return f.vec, f.err
+	return f.vec, "fake-model", f.err
 }
 
 func TestLearnerWeaknessEmbedder_DelegatesAsDocument(t *testing.T) {

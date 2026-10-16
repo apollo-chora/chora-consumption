@@ -44,7 +44,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 
-	mgv1 "github.com/apollo-chora/chora-contracts/gen/go/chora/services/model_gateway/v1"
+	gatewayv1 "github.com/apollo-chora/chora-consumption/internal/adapter/clients/gatewayv1"
 
 	"github.com/apollo-chora/chora-consumption/internal/domain"
 	"github.com/apollo-chora/chora-consumption/internal/domain/companion/grounded"
@@ -70,10 +70,10 @@ const (
 )
 
 // groundedSearchGRPCClient is the minimal slice of
-// mgv1.ModelGatewayServiceClient the adapter calls (GroundedSearch only). The
+// gatewayv1.ModelGatewayServiceClient the adapter calls (GroundedSearch only). The
 // generated client satisfies it; tests inject a fake.
 type groundedSearchGRPCClient interface {
-	GroundedSearch(ctx context.Context, in *mgv1.GroundedSearchRequest, opts ...grpc.CallOption) (*mgv1.GroundedSearchResponse, error)
+	GroundedSearch(ctx context.Context, in *gatewayv1.GroundedSearchRequest, opts ...grpc.CallOption) (*gatewayv1.GroundedSearchResponse, error)
 }
 
 // GroundedSearchGatewayClient calls chora-model-gateway's GroundedSearch RPC.
@@ -103,7 +103,7 @@ func NewGroundedSearchGatewayClient(target string, timeout time.Duration) (*Grou
 	if err != nil {
 		return nil, fmt.Errorf("grounded_search_gateway_client: dial %q: %w", target, err)
 	}
-	return &GroundedSearchGatewayClient{client: mgv1.NewModelGatewayServiceClient(conn), timeout: timeout}, nil
+	return &GroundedSearchGatewayClient{client: gatewayv1.NewModelGatewayServiceClient(conn), timeout: timeout}, nil
 }
 
 // NewGroundedSearchGatewayClientFromStub injects a fake gRPC client (tests). A
@@ -139,7 +139,7 @@ func (c *GroundedSearchGatewayClient) SearchGround(ctx context.Context, q ground
 	callCtx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
-	req := &mgv1.GroundedSearchRequest{
+	req := &gatewayv1.GroundedSearchRequest{
 		InvocationId: domain.NewUUIDv7(),
 		TenantId:     q.TenantID,
 		Gcid:         q.GCID,

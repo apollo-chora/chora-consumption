@@ -50,7 +50,13 @@ type EmbedInput struct {
 // the configured model's native dimensionality (1024) and is bound directly
 // into the pgvector(1024) column by the CompanionMemory adapter.
 //
+// The model travels with the vector rather than through a separate accessor:
+// the gateway resolves which model serves the embeddings operation, so the
+// only name worth recording is the one that answered THIS call. A
+// client-wide `ModelID()` read after the fact cannot be paired reliably with
+// a vector when calls run concurrently.
+//
 // A nil Embedder disables F4 memory (see package doc).
 type Embedder interface {
-	Embed(ctx context.Context, in EmbedInput) ([]float32, error)
+	Embed(ctx context.Context, in EmbedInput) (embedding []float32, modelID string, err error)
 }

@@ -30,10 +30,13 @@ func NewLearnerWeaknessEmbedder(inner companion.Embedder) *LearnerWeaknessEmbedd
 var _ learner_weakness.Embedder = (*LearnerWeaknessEmbedder)(nil)
 
 // Embed produces the 1024-d RETRIEVAL_DOCUMENT embedding for a concept label.
+// The model that answered is discarded: the Growth-Edge port carries no model
+// label, and the value is only meaningful to the caller that made the call.
 func (e *LearnerWeaknessEmbedder) Embed(ctx context.Context, text, tenantID string) ([]float32, error) {
-	return e.inner.Embed(ctx, companion.EmbedInput{
+	vec, _, err := e.inner.Embed(ctx, companion.EmbedInput{
 		Text:     text,
 		TaskType: companion.EmbedTaskDocument,
 		TenantID: tenantID,
 	})
+	return vec, err
 }

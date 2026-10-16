@@ -291,7 +291,7 @@ func (s *Server) recordCeremonyExploreNote(ctx context.Context, tenantID, gcid, 
 		titles = append(titles, e.Title)
 	}
 	content := edgescout.ComposeExploreNote(titles, anchor)
-	vec, eerr := s.Embedder.Embed(ctx, companion.EmbedInput{
+	vec, modelID, eerr := s.Embedder.Embed(ctx, companion.EmbedInput{
 		Text: content, TaskType: companion.EmbedTaskDocument, TenantID: tenantID,
 	})
 	if eerr != nil {
@@ -304,7 +304,7 @@ func (s *Server) recordCeremonyExploreNote(ctx context.Context, tenantID, gcid, 
 		MemoryType:  "ceremony",
 		ContentText: content,
 		Embedding:   vec,
-		ModelID:     s.CompanionEmbeddingModelID,
+		ModelID:     modelID,
 		Now:         time.Now().UTC(),
 	}); rerr != nil {
 		return fmt.Errorf("record ceremony note: %w", rerr)

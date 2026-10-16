@@ -235,7 +235,7 @@ func (s *Server) handleCompanionChat(w http.ResponseWriter, r *http.Request, com
 	if s.Embedder != nil && s.CompanionMemory != nil {
 		memCtx := tracing.WithTenantID(r.Context(), tenantID)
 		memCtx = tracing.WithGCID(memCtx, gcid)
-		if qvec, eerr := s.Embedder.Embed(memCtx, companion.EmbedInput{
+		if qvec, _, eerr := s.Embedder.Embed(memCtx, companion.EmbedInput{
 			Text: req.Message, TaskType: companion.EmbedTaskQuery, TenantID: tenantID,
 		}); eerr != nil {
 			log.Printf("consumption: companion memory recall embed failed (non-fatal): %v", eerr)
@@ -484,7 +484,7 @@ func (s *Server) handleCompanionChat(w http.ResponseWriter, r *http.Request, com
 			content := "Learner: " + req.Message + "\nCompanion: " + assembled
 			memCtx := tracing.WithTenantID(r.Context(), tenantID)
 			memCtx = tracing.WithGCID(memCtx, gcid)
-			if dvec, eerr := s.Embedder.Embed(memCtx, companion.EmbedInput{
+			if dvec, dmodel, eerr := s.Embedder.Embed(memCtx, companion.EmbedInput{
 				Text: content, TaskType: companion.EmbedTaskDocument, TenantID: tenantID,
 			}); eerr != nil {
 				log.Printf("consumption: companion memory record embed failed (non-fatal): %v", eerr)
@@ -495,7 +495,7 @@ func (s *Server) handleCompanionChat(w http.ResponseWriter, r *http.Request, com
 				MemoryType:      "chat_turn",
 				ContentText:     content,
 				Embedding:       dvec,
-				ModelID:         s.CompanionEmbeddingModelID,
+				ModelID:         dmodel,
 				SourceTurnID:    turnID,
 				SourceSessionID: sessionID,
 				Now:             time.Now().UTC(),

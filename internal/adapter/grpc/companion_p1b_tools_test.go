@@ -84,8 +84,8 @@ type fakeEmbedder struct {
 	err error
 }
 
-func (f fakeEmbedder) Embed(_ context.Context, _ companion.EmbedInput) ([]float32, error) {
-	return f.vec, f.err
+func (f fakeEmbedder) Embed(_ context.Context, _ companion.EmbedInput) ([]float32, string, error) {
+	return f.vec, "fake-model", f.err
 }
 
 func p1bInstance() *companion.Instance {
@@ -294,7 +294,7 @@ func TestRecordCompanionMemoryNote_HappyPath(t *testing.T) {
 	mem := &fakeMemoryRecorder{}
 	s, repo := p1bServer(t,
 		WithCompanionInstanceReader(fakeInstanceReader{inst: p1bInstance()}),
-		WithCompanionMemoryNote(mem, fakeEmbedder{vec: []float32{0.1, 0.2}}, "embed-model-1"),
+		WithCompanionMemoryNote(mem, fakeEmbedder{vec: []float32{0.1, 0.2}}),
 	)
 	seedStage2(repo)
 
@@ -315,7 +315,7 @@ func TestRecordCompanionMemoryNote_HappyPath(t *testing.T) {
 	if in.MemoryType != "recap" || in.CompanionID != "fam-1" || in.OwnerGCID != "g" || in.TenantID != "t" {
 		t.Fatalf("RecordMemoryInput = %+v", in)
 	}
-	if in.ModelID != "embed-model-1" || len(in.Embedding) != 2 {
+	if in.ModelID != "fake-model" || len(in.Embedding) != 2 {
 		t.Fatalf("embedding not threaded: %+v", in)
 	}
 }
@@ -324,7 +324,7 @@ func TestRecordCompanionMemoryNote_Validation(t *testing.T) {
 	mem := &fakeMemoryRecorder{}
 	s, repo := p1bServer(t,
 		WithCompanionInstanceReader(fakeInstanceReader{inst: p1bInstance()}),
-		WithCompanionMemoryNote(mem, fakeEmbedder{vec: []float32{0.1}}, "m"),
+		WithCompanionMemoryNote(mem, fakeEmbedder{vec: []float32{0.1}}),
 	)
 	seedStage2(repo)
 
@@ -355,7 +355,7 @@ func TestRecordCompanionMemoryNote_EmbedFailureIsLoud(t *testing.T) {
 	mem := &fakeMemoryRecorder{}
 	s, repo := p1bServer(t,
 		WithCompanionInstanceReader(fakeInstanceReader{inst: p1bInstance()}),
-		WithCompanionMemoryNote(mem, fakeEmbedder{err: errors.New("embedder down")}, "m"),
+		WithCompanionMemoryNote(mem, fakeEmbedder{err: errors.New("embedder down")}),
 	)
 	seedStage2(repo)
 

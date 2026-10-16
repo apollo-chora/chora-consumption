@@ -505,7 +505,7 @@ func (s *Server) rankEdgeScoutPool(ctx context.Context, tenantID, rootTitle stri
 		// set): source order stands; not an error.
 		return pool, nil
 	}
-	anchorVec, aerr := s.Embedder.Embed(ctx, companion.EmbedInput{
+	anchorVec, _, aerr := s.Embedder.Embed(ctx, companion.EmbedInput{
 		Text:     strings.Join(anchorParts, "; "),
 		TaskType: companion.EmbedTaskQuery,
 		TenantID: tenantID,
@@ -518,7 +518,7 @@ func (s *Server) rankEdgeScoutPool(ctx context.Context, tenantID, rootTitle stri
 		vec := c.Embedding
 		if len(vec) == 0 {
 			var eerr error
-			vec, eerr = s.Embedder.Embed(ctx, companion.EmbedInput{
+			vec, _, eerr = s.Embedder.Embed(ctx, companion.EmbedInput{
 				Text:     c.Title,
 				TaskType: companion.EmbedTaskDocument,
 				TenantID: tenantID,

@@ -80,11 +80,13 @@ func WithCourseDirectoryReader(r CourseDirectoryReader) CompanionGrowthOption {
 
 // WithCompanionMemoryNote injects the memory Record port + embedder for
 // RecordCompanionMemoryNote (nil ⇒ Unimplemented).
-func WithCompanionMemoryNote(m CompanionMemoryRecorder, e companion.Embedder, embeddingModelID string) CompanionGrowthOption {
+//
+// No model id is passed: the embedder returns the model that answered each
+// call, and that is what gets recorded.
+func WithCompanionMemoryNote(m CompanionMemoryRecorder, e companion.Embedder) CompanionGrowthOption {
 	return func(s *CompanionGrowthServer) {
 		s.memoryNotes = m
 		s.embedder = e
-		s.embeddingModelID = embeddingModelID
 	}
 }
 
@@ -331,7 +333,7 @@ func (s *CompanionGrowthServer) RecordCompanionMemoryNote(
 		return nil, err
 	}
 
-	vec, err := s.embedder.Embed(ctx, companion.EmbedInput{
+	vec, modelID, err := s.embedder.Embed(ctx, companion.EmbedInput{
 		Text: content, TaskType: companion.EmbedTaskDocument, TenantID: tenantID,
 	})
 	if err != nil {
@@ -346,7 +348,7 @@ func (s *CompanionGrowthServer) RecordCompanionMemoryNote(
 		MemoryType:  noteType,
 		ContentText: content,
 		Embedding:   vec,
-		ModelID:     s.embeddingModelID,
+		ModelID:     modelID,
 		Now:         time.Now().UTC(),
 	}); err != nil {
 		return nil, status.Errorf(codes.Internal, "record memory note: %v", err)
