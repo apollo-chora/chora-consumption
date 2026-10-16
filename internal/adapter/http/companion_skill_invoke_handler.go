@@ -696,7 +696,7 @@ func (s *Server) invokeCompanionSkill(w http.ResponseWriter, r *http.Request, co
 		if memType == "recap" {
 			persistErrCode = "RECAP_PERSIST_FAILED"
 		}
-		vec, eerr := s.Embedder.Embed(ctx, companion.EmbedInput{
+		vec, _, eerr := s.Embedder.Embed(ctx, companion.EmbedInput{
 			Text: reply, TaskType: companion.EmbedTaskDocument, TenantID: tenantID,
 		})
 		if eerr != nil {

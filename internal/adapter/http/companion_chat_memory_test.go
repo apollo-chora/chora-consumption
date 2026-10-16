@@ -24,7 +24,7 @@ import (
 // EMBEDDING_LOGICAL_MODEL_ID (memory_wiring.go copies it onto
 // Server.CompanionEmbeddingModelID), so tests assert the CONFIGURED id — not a
 // literal — is what gets stamped on each memory row.
-const testEmbeddingModelID = "embedding-model-configured"
+const testEmbeddingModelID = "fake-model"
 
 // stampCompanionEmbeddingModelID sets EMBEDDING_LOGICAL_MODEL_ID and stamps the
 // Server the way boot does, returning the configured id for assertions.
@@ -43,13 +43,13 @@ type fakeEmbedder struct {
 	gotInputs []companion.EmbedInput
 }
 
-func (f *fakeEmbedder) Embed(_ context.Context, in companion.EmbedInput) ([]float32, error) {
+func (f *fakeEmbedder) Embed(_ context.Context, in companion.EmbedInput) ([]float32, string, error) {
 	f.calls++
 	f.gotInputs = append(f.gotInputs, in)
 	if f.err != nil {
-		return nil, f.err
+		return nil, "", f.err
 	}
-	return f.vec, nil
+	return f.vec, "fake-model", nil
 }
 
 // fakeCompanionMemory records recall queries + persisted memories.

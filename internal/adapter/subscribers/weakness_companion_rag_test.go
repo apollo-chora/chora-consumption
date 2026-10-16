@@ -41,10 +41,10 @@ type fakeCompanionEmbedder struct {
 	calls    int
 }
 
-func (e *fakeCompanionEmbedder) Embed(_ context.Context, in companion.EmbedInput) ([]float32, error) {
+func (e *fakeCompanionEmbedder) Embed(_ context.Context, in companion.EmbedInput) ([]float32, string, error) {
 	e.calls++
 	e.gotInput = in
-	return e.vec, e.err
+	return e.vec, "fake-model", e.err
 }
 
 type fakeCompanionMemory struct {

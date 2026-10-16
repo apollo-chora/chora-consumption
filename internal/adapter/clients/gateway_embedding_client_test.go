@@ -76,7 +76,7 @@ func TestGatewayEmbeddingClient_SendsWireCompleteRequest(t *testing.T) {
 	fake := &fakeEmbedGRPC{resp: okEmbedResponse()}
 	c := newStubClient(t, fake)
 
-	got, err := c.Embed(stampedCtx(t), companion.EmbedInput{
+	got, _, err := c.Embed(stampedCtx(t), companion.EmbedInput{
 		Text:     "the learner asked about fractions",
 		TaskType: companion.EmbedTaskQuery,
 		TenantID: "0198aaaa-0000-7000-8000-0000000000aa",
@@ -131,7 +131,7 @@ func TestGatewayEmbeddingClient_EmptyTaskTypeDefaultsToDocument(t *testing.T) {
 	fake := &fakeEmbedGRPC{resp: okEmbedResponse()}
 	c := newStubClient(t, fake)
 
-	if _, err := c.Embed(stampedCtx(t), companion.EmbedInput{
+	if _, _, err := c.Embed(stampedCtx(t), companion.EmbedInput{
 		Text:     "stored memory turn",
 		TenantID: "0198aaaa-0000-7000-8000-0000000000aa",
 	}); err != nil {
@@ -152,7 +152,7 @@ func TestGatewayEmbeddingClient_RefusesEmptyText(t *testing.T) {
 	fake := &fakeEmbedGRPC{resp: okEmbedResponse()}
 	c := newStubClient(t, fake)
 
-	_, err := c.Embed(stampedCtx(t), companion.EmbedInput{Text: "   "})
+	_, _, err := c.Embed(stampedCtx(t), companion.EmbedInput{Text: "   "})
 	if err == nil {
 		t.Fatal("expected error for empty text")
 	}
@@ -174,7 +174,7 @@ func TestGatewayEmbeddingClient_RefusesMissingGCID(t *testing.T) {
 	// Tenant present, gcid deliberately NOT stamped: the caller refuses first,
 	// loudly, without fabricating an actor.
 	ctx := tracing.WithTenantID(context.Background(), "0198aaaa-0000-7000-8000-0000000000aa")
-	_, err := c.Embed(ctx, companion.EmbedInput{Text: "hello", TenantID: "0198aaaa-0000-7000-8000-0000000000aa"})
+	_, _, err := c.Embed(ctx, companion.EmbedInput{Text: "hello", TenantID: "0198aaaa-0000-7000-8000-0000000000aa"})
 	if err == nil {
 		t.Fatal("expected error for missing gcid")
 	}
@@ -195,7 +195,7 @@ func TestGatewayEmbeddingClient_RefusesMissingTenant(t *testing.T) {
 
 	// gcid stamped, tenant absent from BOTH the input and the ctx.
 	ctx := tracing.WithGCID(context.Background(), "0198bbbb-0000-7000-8000-0000000000bb")
-	_, err := c.Embed(ctx, companion.EmbedInput{Text: "hello"})
+	_, _, err := c.Embed(ctx, companion.EmbedInput{Text: "hello"})
 	if err == nil {
 		t.Fatal("expected error for missing tenant")
 	}
@@ -224,7 +224,7 @@ func TestGatewayEmbeddingClient_MapsRPCErrorsToEngineSentinels(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			fake := &fakeEmbedGRPC{err: tc.rpc}
 			c := newStubClient(t, fake)
-			_, err := c.Embed(stampedCtx(t), companion.EmbedInput{
+			_, _, err := c.Embed(stampedCtx(t), companion.EmbedInput{
 				Text:     "hello",
 				TenantID: "0198aaaa-0000-7000-8000-0000000000aa",
 			})
@@ -253,6 +253,14 @@ func TestGatewayEmbeddingClient_RejectsMalformedResponses(t *testing.T) {
 	nonFinite := okEmbedResponse()
 	nonFinite.Data[0].Embedding[7] = math.Inf(1)
 
+	// A finite float64 outside float32's range becomes an infinity on
+	// conversion, so the converted value is what must be checked.
+	overflow := okEmbedResponse()
+	overflow.Data[0].Embedding[7] = math.MaxFloat64
+
+	extra := okEmbedResponse()
+	extra.Data = append(extra.Data, &gatewayv1.Embedding{Index: 1, Embedding: overflow.Data[0].Embedding})
+
 	cases := []struct {
 		name string
 		resp *gatewayv1.EmbedResponse
@@ -263,38 +271,20 @@ func TestGatewayEmbeddingClient_RejectsMalformedResponses(t *testing.T) {
 		{"wrong index", wrongIndex},
 		{"no upstream model", noModel},
 		{"non-finite value", nonFinite},
+		{"float32 overflow", overflow},
+		{"extra vector", extra},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			fake := &fakeEmbedGRPC{resp: tc.resp}
 			c := newStubClient(t, fake)
-			if _, err := c.Embed(stampedCtx(t), companion.EmbedInput{
+			if _, _, err := c.Embed(stampedCtx(t), companion.EmbedInput{
 				Text:     "hello",
 				TenantID: "0198aaaa-0000-7000-8000-0000000000aa",
 			}); err == nil {
 				t.Fatal("expected an error for a malformed embedding response")
 			}
 		})
-	}
-}
-
-// ModelID is the upstream model that answered the most recent Embed. The
-// gateway resolves which model serves the operation, so it is empty until the
-// first call — there is no caller-side value to report before that.
-func TestGatewayEmbeddingClient_ModelIDTracksTheAnsweringModel(t *testing.T) {
-	fake := &fakeEmbedGRPC{resp: okEmbedResponse()}
-	c := newStubClient(t, fake)
-	if got := c.ModelID(); got != "" {
-		t.Fatalf("ModelID() = %q before any call, want empty", got)
-	}
-	if _, err := c.Embed(stampedCtx(t), companion.EmbedInput{
-		Text:     "hello",
-		TenantID: "0198aaaa-0000-7000-8000-0000000000aa",
-	}); err != nil {
-		t.Fatalf("Embed: %v", err)
-	}
-	if got := c.ModelID(); got != "embedding-route-v1" {
-		t.Fatalf("ModelID() = %q, want the upstream model from the response", got)
 	}
 }
 

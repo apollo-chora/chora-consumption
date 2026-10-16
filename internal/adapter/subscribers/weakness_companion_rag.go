@@ -57,7 +57,7 @@ func NewCompanionRAGHook(resolver CompanionResolver, embedder companion.Embedder
 		if strings.TrimSpace(content) == "" {
 			return nil // nothing diagnosed (empty/unreadable upload) → nothing to record
 		}
-		vec, err := embedder.Embed(ctx, companion.EmbedInput{
+		vec, modelID, err := embedder.Embed(ctx, companion.EmbedInput{
 			Text:     content,
 			TaskType: companion.EmbedTaskDocument,
 			TenantID: p.TenantID,

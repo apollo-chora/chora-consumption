@@ -143,23 +143,23 @@ func (c *GatewayEmbeddingClient) recordModel(model string) {
 // Embed implements companion.Embedder over the gateway Embed RPC. The three
 // identity fields the gateway requires are validated here first so a mis-wired
 // call site fails loud, with the fix named, before any RPC is attempted.
-func (c *GatewayEmbeddingClient) Embed(ctx context.Context, in companion.EmbedInput) ([]float32, error) {
+func (c *GatewayEmbeddingClient) Embed(ctx context.Context, in companion.EmbedInput) ([]float32, string, error) {
 	if c == nil || c.client == nil {
-		return nil, agentengine.ErrEngineNotConfigured
+		return nil, "", agentengine.ErrEngineNotConfigured
 	}
 	if strings.TrimSpace(in.Text) == "" {
-		return nil, fmt.Errorf("%w: embed text required", agentengine.ErrInvalidRequest)
+		return nil, "", fmt.Errorf("%w: embed text required", agentengine.ErrInvalidRequest)
 	}
 	tenantID := strings.TrimSpace(in.TenantID)
 	if tenantID == "" {
 		tenantID = strings.TrimSpace(tracing.TenantIDFromContext(ctx))
 	}
 	if tenantID == "" {
-		return nil, fmt.Errorf("%w: tenant required for ledger attribution (set EmbedInput.TenantID or stamp ctx via tracing.WithTenantID)", agentengine.ErrInvalidRequest)
+		return nil, "", fmt.Errorf("%w: tenant required for ledger attribution (set EmbedInput.TenantID or stamp ctx via tracing.WithTenantID)", agentengine.ErrInvalidRequest)
 	}
 	gcid := strings.TrimSpace(tracing.GCIDFromContext(ctx))
 	if gcid == "" {
-		return nil, fmt.Errorf("%w: gcid required for ledger attribution (stamp ctx via tracing.WithGCID at the call site)", agentengine.ErrInvalidRequest)
+		return nil, "", fmt.Errorf("%w: gcid required for ledger attribution (stamp ctx via tracing.WithGCID at the call site)", agentengine.ErrInvalidRequest)
 	}
 
 	// Parity with the retired direct-Vertex client: the task-type default is
@@ -187,14 +187,13 @@ func (c *GatewayEmbeddingClient) Embed(ctx context.Context, in companion.EmbedIn
 		}),
 	})
 	if err != nil {
-		return nil, mapEmbedRPCError(err)
+		return nil, "", mapEmbedRPCError(err)
 	}
 	vec, model, err := firstVector(resp)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	c.recordModel(model)
-	return vec, nil
+	return vec, model, nil
 }
 
 // firstVector returns the response's vector for input index 0, converted to
@@ -216,6 +215,10 @@ func firstVector(resp *gatewayv1.EmbedResponse) ([]float32, string, error) {
 	if len(data) == 0 {
 		return nil, "", fmt.Errorf("%w: empty embedding response from gateway", agentengine.ErrStreamAborted)
 	}
+	// This call sent exactly one input, so exactly one vector must come back.
+	if len(data) != 1 {
+		return nil, "", fmt.Errorf("%w: gateway returned %d vectors for 1 input", agentengine.ErrStreamAborted, len(data))
+	}
 	// The gateway places each vector at the index the caller's input holds, so
 	// index 0 is the single text this call sent.
 	if data[0].GetIndex() != 0 {
@@ -230,7 +233,14 @@ func firstVector(resp *gatewayv1.EmbedResponse) ([]float32, string, error) {
 		if math.IsNaN(v) || math.IsInf(v, 0) {
 			return nil, "", fmt.Errorf("%w: gateway returned a non-finite embedding value at %d", agentengine.ErrStreamAborted, i)
 		}
-		out[i] = float32(v)
+		// Check the CONVERTED value: a finite float64 outside float32's range
+		// becomes an infinity on conversion, and that infinity would reach the
+		// vector column.
+		f := float32(v)
+		if math.IsNaN(float64(f)) || math.IsInf(float64(f), 0) {
+			return nil, "", fmt.Errorf("%w: embedding value at %d is not representable as float32", agentengine.ErrStreamAborted, i)
+		}
+		out[i] = f
 	}
 	return out, model, nil
 }
